@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtuelle Umgebungen
+venv/
+.venv/
+env/
+
+# Secrets / Umgebungsvariablen
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+Desktop.ini
