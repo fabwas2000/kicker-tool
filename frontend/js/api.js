@@ -23,7 +23,20 @@ window.KT = window.KT || {};
     }
     if (options.body) init.body = options.body;
 
-    return fetch(KT.config.getBackendUrl() + path, init).then(function (res) {
+    // Ohne hinterlegte Backend-Adresse ginge die Anfrage an die eigene
+    // Seite - GitHub Pages antwortet dann mit seiner 404-Seite und der
+    // Nutzer saehe nur "404:". Lieber gleich sagen, was zu tun ist.
+    var basis = KT.config.getBackendUrl();
+    if (!basis) {
+      return Promise.reject(
+        new Error(
+          "Keine Backend-Adresse hinterlegt. Unter „Einstellungen“ die Adresse " +
+            "des Servers eintragen."
+        )
+      );
+    }
+
+    return fetch(basis + path, init).then(function (res) {
       if (!res.ok) {
         return res
           .json()
