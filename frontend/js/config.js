@@ -21,7 +21,7 @@ window.KT = window.KT || {};
   // Die Cloud-Adresse MUSS https sein: GitHub Pages laeuft ueber https, und
   // Browser blockieren Anfragen von einer https-Seite an http ("mixed
   // content") kommentarlos.
-  var PRODUKTIV_BACKEND_URL = "";
+  var PRODUKTIV_BACKEND_URL = "https://kicker-tool-backend.onrender.com";
   var LOKAL =
     location.protocol === "file:" ||
     /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
