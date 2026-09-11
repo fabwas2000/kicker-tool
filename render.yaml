@@ -1,0 +1,29 @@
+# Bauplan fuer Render (https://render.com). Render liest diese Datei beim
+# Anlegen eines "Blueprint" und richtet den Dienst danach ein.
+#
+# Warum ueberhaupt eine Datei und nicht alles im Webformular: So steht die
+# Konfiguration im Repo statt nur in einer Weboberflaeche - nachvollziehbar,
+# und bei einem Neuaufbau ist nichts vergessen.
+services:
+  - type: web
+    name: kicker-tool-backend
+    runtime: python
+    plan: free
+    region: frankfurt          # naeher an Neon (EU) = kuerzere Antwortzeiten
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # $PORT gibt Render vor, die Adresse MUSS 0.0.0.0 sein - auf 127.0.0.1
+    # waere der Dienst nur im Container selbst erreichbar.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/auth/status
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.4"
+      # Die drei folgenden Werte werden in der Render-Oberflaeche gesetzt,
+      # nicht hier - sie gehoeren nicht in ein oeffentliches Repo.
+      - key: DATABASE_URL      # Neon-Adresse, mit postgresql+psycopg://
+        sync: false
+      - key: APP_PASSWORD      # schuetzt alle schreibenden Zugriffe
+        sync: false
+      - key: CORS_ORIGINS      # z.B. https://fabwas2000.github.io
+        sync: false

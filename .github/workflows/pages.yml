@@ -1,0 +1,40 @@
+# Veroeffentlicht den Ordner frontend/ als GitHub Pages.
+#
+# Warum ein Workflow und nicht einfach "Pages aus dem main-Branch":
+# Pages liefert nur den Wurzelordner oder /docs aus. Unser Frontend liegt in
+# frontend/. Statt die Projektstruktur danach zu verbiegen, laedt dieser
+# Workflow gezielt diesen einen Ordner hoch. Das Backend und die Skripte
+# landen damit auch gar nicht erst auf der Webseite.
+name: Frontend veroeffentlichen
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:        # erlaubt manuelles Ausloesen im Actions-Tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Laeuft ein Deploy schon, nicht abbrechen, sondern anstellen - sonst kann
+# eine halb hochgeladene Seite stehen bleiben.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend
+      - id: deployment
+        uses: actions/deploy-pages@v4
