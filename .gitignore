@@ -36,3 +36,9 @@ backend/fotos_kicker/
 
 # Zwischenstand des Foto-Imports - reines Arbeitsartefakt
 backend/kicker_fotos_fortschritt.json
+
+# Zugangsdaten zur Cloud-Datenbank. Enthaelt ein Passwort - darf NIE ins Repo.
+backend/neon.url
+
+# Backups aus der Cloud-Datenbank
+backend/backups/
