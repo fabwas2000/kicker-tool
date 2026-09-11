@@ -11,7 +11,21 @@ window.KT = window.KT || {};
   // Passwort fuer Aenderungen. Liegt bewusst nur hier im Browser des
   // jeweiligen Geraets - einmal eintragen, danach gemerkt.
   var PASSWORT_KEY = "kicker-tool:passwort";
-  var DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
+  // Adresse des Backends. Haengt davon ab, WO die Seite geoeffnet wurde:
+  //   lokal (file:// oder localhost) -> das Backend auf diesem Rechner
+  //   im Netz (GitHub Pages)         -> der Cloud-Dienst
+  // Ohne diese Unterscheidung zeigte die im Netz ausgelieferte Seite auf
+  // 127.0.0.1 - also auf das Geraet des Besuchers selbst, wo nichts laeuft.
+  // Jedes Handy muesste die Adresse sonst von Hand eintragen.
+  //
+  // Die Cloud-Adresse MUSS https sein: GitHub Pages laeuft ueber https, und
+  // Browser blockieren Anfragen von einer https-Seite an http ("mixed
+  // content") kommentarlos.
+  var PRODUKTIV_BACKEND_URL = "";
+  var LOKAL =
+    location.protocol === "file:" ||
+    /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  var DEFAULT_BACKEND_URL = LOKAL ? "http://127.0.0.1:8000" : PRODUKTIV_BACKEND_URL;
 
   // localStorage kann je nach Browser/Einstellung auch mal werfen (z.B. bei
   // blockierten Cookies) - dann läuft die App eben ohne gemerkte Werte weiter.
