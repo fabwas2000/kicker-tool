@@ -1,0 +1,349 @@
+/*
+  Dunkle Variante der kicker-Optik, abgeleitet aus kickers eigenem
+  Dark-Stylesheet (main-dark.min.css). Kanten bleiben nahezu eckig, Schatten
+  gibt es nur bei echten Overlays - getrennt wird mit Haarlinien.
+
+  Zwei Rottoene, weil einer auf dunklem Grund nicht beides kann:
+    --kicker      #ff5c4d  rote SCHRIFT (4,7:1 auf Flaeche)
+    --kicker-btn  #c00     gefuellte KNOEPFE mit weisser Schrift (5,9:1)
+  kickers Marken-Rot #c00 als Schrift auf Dunkel waere nur 2,4:1.
+*/
+:root {
+  --kicker: #ff5c4d;
+  --kicker-btn: #cc0000;
+  --kicker-btn-hover: #e00b0b;
+  --kicker-soft: #3a1f1c;
+  --maroon: #2a0606;
+  --ink: #f3f3f3;
+  /* Im Dunkelmodus ist der "kraeftigere" Nebenton der HELLERE - die Namen
+     behalten ihre Rolle, nur die Werte drehen sich um. */
+  --mute: #b4b4b4;
+  --mute-dark: #d4d4d5;
+  --line: #3a3a3a;
+  --line-strong: #7a7a7a;
+  --panel: #242424;
+  --wash: #1a1a1a;
+  --wash-alt: #2e2e2e;
+  --pos: #4dbc3b;
+}
+
+body {
+  background-color: var(--wash);
+  color: var(--ink);
+  font-family: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  /* Zahlen stehen in Tabellen und auf dem Feld untereinander - ohne feste
+     Ziffernbreite springen die Spalten bei jedem Live-Update. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* Navigation                                                          */
+/* ------------------------------------------------------------------ */
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 0.6rem 0.6rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--mute-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.nav-link:hover {
+  color: var(--kicker);
+}
+
+/* Aktiver Reiter: rot mit roter Unterkante - wie die zweite Navigationszeile
+   auf kicker.de. */
+.nav-active {
+  color: var(--kicker);
+  border-bottom-color: var(--kicker);
+}
+
+/* ------------------------------------------------------------------ */
+/* Wiederkehrende Bausteine                                            */
+/* ------------------------------------------------------------------ */
+
+/* Kleine Grossbuchstaben-Beschriftung ueber Tabellen und Abschnitten. */
+.kt-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mute);
+}
+
+/* Flaeche statt Karte: kicker trennt mit Haarlinien, nicht mit Schatten. */
+.kt-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+/* Zeile einer Datentabelle. */
+.kt-row + .kt-row {
+  border-top: 1px solid var(--line);
+}
+
+.kt-hover:hover {
+  background-color: var(--wash-alt);
+}
+
+/* Eingabefelder: eckig, ruhig, roter Fokusring wie bei kicker. */
+.kt-input {
+  background: #1b1b1b;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.kt-input:focus {
+  outline: none;
+  border-color: var(--kicker);
+  box-shadow: 0 0 0 0.1rem rgba(255, 92, 77, 0.4);
+}
+
+.kt-input::placeholder {
+  color: #8a8a8a;
+}
+
+/*
+  Zustaende der Noten-/Korrekturfelder. Bewusst als eigene Klassen mit zwei
+  Selektoren statt als Utility-Klassen: so gewinnen sie sicher gegen die
+  Grundgestaltung von .kt-input, unabhaengig davon, in welcher Reihenfolge
+  Tailwind und diese Datei im Dokument landen.
+*/
+.kt-input.is-invalid {
+  border-color: var(--kicker);
+  background: #3a1f1c;
+}
+
+/* Bewusst "-" eingetragen: gespielt, aber ohne Note. */
+.kt-input.is-nograde {
+  background: #2e2e2e;
+  color: var(--mute);
+  font-style: italic;
+}
+
+/* Tor-/Vorlagenzahl weicht von der ESPN-Zaehlung ab. */
+.kt-input.is-override {
+  border-color: var(--warn-line, #7a6a22);
+  background: #332d12;
+  color: #fae34b;
+}
+
+.kt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 2px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Gefuellter Knopf nutzt das satte Marken-Rot, nicht das aufgehellte
+   Schrift-Rot: weisse Schrift darauf erreicht so 5,9:1 statt 3,0:1. */
+.kt-btn-primary {
+  background: var(--kicker-btn);
+  color: #fff;
+}
+
+.kt-btn-primary:hover {
+  background: var(--kicker-btn-hover);
+}
+
+.kt-btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.kt-btn-secondary:hover {
+  border-color: var(--kicker);
+  color: var(--kicker);
+}
+
+.kt-btn:active {
+  transform: translateY(1px);
+}
+
+.kt-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+.kt-btn:focus-visible,
+.kt-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 0.12rem rgba(255, 92, 77, 0.75);
+}
+
+/* ------------------------------------------------------------------ */
+/* Spielfeld                                                           */
+/* ------------------------------------------------------------------ */
+
+/*
+  Rasen im Dunkelmodus: kicker zeigt Aufstellungen auf einer NEUTRALEN, sehr
+  zurueckhaltenden Flaeche (im Spielbericht sogar fast weiss, im Managerspiel
+  blassgruen) - nie auf sattem Gruen. Die dunkle Entsprechung ist ein tiefes,
+  entsaettigtes Gruen: es liest sich als Spielfeld, draengt sich aber nicht vor
+  die Fotos und die Punktzahlen.
+*/
+.pitch {
+  background: repeating-linear-gradient(
+    to bottom,
+    #1d2a21 0,
+    #1d2a21 12.5%,
+    #1a251d 12.5%,
+    #1a251d 25%
+  );
+  border: 1px solid var(--line);
+  /* Macht die tatsaechliche Breite dieses Feldes als "cqw"-Einheit verfuegbar -
+     .pitch-photo unten nutzt das, um sich am echten verfuegbaren Platz zu
+     orientieren statt an einer festen px-Zahl je Ansicht. */
+  container-type: inline-size;
+}
+
+/*
+  Spielerfoto auf dem Feld - im Hochformat wie bei kicker, nicht rund. Das
+  zeigt bei gleicher Kachelbreite deutlich mehr vom Gesicht als ein runder
+  Ausschnitt und passt zu den Portraetfotos, die kicker selbst verwendet.
+
+  Die Groesse skaliert mit der tatsaechlichen Feldbreite (cqw bezieht sich auf
+  .pitch, nicht auf den Bildschirm): im kleinen Spieltag-Ausklapper
+  automatisch kompakter als im grossen Editor, ohne je Ansicht eigene Werte.
+*/
+.pitch-photo {
+  width: clamp(30px, 10.5cqw, 64px);
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  object-position: top center;
+  background: #2e2e2e;
+  border-radius: 2px;
+}
+
+/* Platzhalter fuer eine unbesetzte Position - gleiche Flaeche wie ein Foto. */
+.pitch-slot-empty {
+  width: clamp(30px, 10.5cqw, 64px);
+  aspect-ratio: 4 / 5;
+  border-radius: 2px;
+}
+
+/* Punktzahl sitzt wie kickers Note oben rechts ueber der Ecke des Fotos. */
+.pitch-points {
+  font-size: clamp(10px, 2.9cqw, 14px);
+  line-height: 1;
+  padding: 2px 3px;
+  border-radius: 2px;
+  background: rgba(12, 12, 12, 0.92);
+  font-weight: 700;
+}
+
+/* Name darunter: nur der Nachname, wie bei kicker. */
+.pitch-name {
+  font-size: clamp(9px, 2.4cqw, 12px);
+  line-height: 1.1;
+}
+
+.pitch-status {
+  font-size: clamp(8px, 2.1cqw, 11px);
+  line-height: 1.1;
+}
+
+.pitch::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  margin: 4%;
+  pointer-events: none;
+}
+
+.pitch::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Fuenferreihen (3-5-2, 5-3-2, 4-5-1) sitzen bei 11/30.5/50/69.5/89 Prozent,
+   die Mittelpunkte liegen also 19.5% auseinander. Damit die Kacheln weder
+   ueberlappen noch ueber den Feldrand ragen, muss ihre Breite darunter
+   bleiben: 18% laesst beidseitig Luft (aeusserer Rand bei 2%). Die px-Werte
+   sind die groesstmoegliche Kachel dafuer - bei einem 700px breiten Feld
+   (typische Editor-Breite am Desktop) sind 18% schon 126px, der px-Wert
+   greift also fast immer zuerst. */
+.lineup-slot {
+  width: min(104px, 18%);
+}
+
+.pitch-compact .lineup-slot {
+  width: min(92px, 18%);
+}
+
+/*
+  Fruehere Notverkleinerung auf schmalen Bildschirmen ist entfallen: seit die
+  Reihenabstaende in formations.js gleichmaessiger liegen (mindestens 17%
+  statt 13%), passen die Kacheln auch am Handy ohne Herunterskalieren - und
+  die Fotos bleiben dort entsprechend groesser.
+*/
+
+/* ------------------------------------------------------------------ */
+/* Hinweise (Toast)                                                    */
+/* ------------------------------------------------------------------ */
+
+#toast {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  z-index: 50;
+  padding: 0.55rem 0.9rem;
+  border-radius: 2px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+}
+
+#toast[data-variant="error"] {
+  background-color: var(--kicker-btn);
+  color: #fff;
+}
+
+/* Auf dunklem Grund traegt der Hinweis selbst die helle Flaeche, sonst
+   verschwaende er im Hintergrund. */
+#toast[data-variant="info"] {
+  background-color: #f3f3f3;
+  color: #1a1a1a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

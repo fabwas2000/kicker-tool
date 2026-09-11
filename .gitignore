@@ -10,6 +10,9 @@ env/
 # Secrets / Umgebungsvariablen
 .env
 
+# Lokale SQLite-Datenbank
+*.db
+
 # IDE
 .vscode/
 .idea/
@@ -17,3 +20,19 @@ env/
 # Windows
 Thumbs.db
 Desktop.ini
+# Laufzeit-Logs
+*.log
+
+# Foto-Archive und Rohbilder.
+# Bewusst NICHT im Repo:
+#  - Die Fotos liegen ohnehin in der Datenbank und werden vom Backend
+#    ausgeliefert; fuer den Betrieb braucht das Repo sie nicht.
+#  - Es sind Pressefotos der DFL bzw. des kicker. Dieses Repo ist oeffentlich.
+#  - 48 MB Binaerdateien blaehen die Historie dauerhaft auf (git vergisst nie).
+# Als Wiederherstellungs-Kopien bleiben sie lokal liegen.
+Bilder/
+backend/fotos_gesichert/
+backend/fotos_kicker/
+
+# Zwischenstand des Foto-Imports - reines Arbeitsartefakt
+backend/kicker_fotos_fortschritt.json

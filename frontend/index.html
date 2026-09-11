@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Sagt dem Browser, dass die Seite dunkel ist: Formularelemente,
+         Scrollbalken und Auswahlfelder kommen dann ebenfalls dunkel. -->
+    <meta name="color-scheme" content="dark" />
+    <title>Kicker Managerspiel Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!--
+      Dunkle Variante der kicker-Optik. Die Farbrollen stammen aus kickers
+      eigenem Dark-Stylesheet (main-dark.min.css): #363535/#222 als Flaechen,
+      #595959 als Linien, aufgehelltes Rot fuer Text - kickers Marken-Rot #c00
+      erreicht auf dunklem Grund nur 2,4:1 und waere als Schrift unlesbar.
+      Deshalb bewusst ZWEI Rottoene:
+        kicker.DEFAULT #ff5c4d - rote Schrift (4,7:1 auf Flaeche)
+        kicker.btn     #c00    - gefuellte Knoepfe, weisse Schrift (5,9:1)
+      Die Originalschriften Ringside/Knockout sind lizenzpflichtig, Barlow
+      (Semi) Condensed ist die naechste frei verfuegbare schmale Grotesk.
+    -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              kicker: { DEFAULT: "#ff5c4d", btn: "#cc0000", btnHover: "#e00b0b", soft: "#3a1f1c" },
+              maroon: { DEFAULT: "#2a0606", light: "#4a0d0d" },
+              ink: { DEFAULT: "#f3f3f3", soft: "#dedfe0" },
+              // "mute.dark" heisst weiter so, meint im Dunkelmodus aber den
+              // HELLEREN, kraeftigeren Nebenton - die Rolle bleibt gleich.
+              mute: { DEFAULT: "#b4b4b4", dark: "#d4d4d5" },
+              line: { DEFAULT: "#3a3a3a", strong: "#7a7a7a" },
+              panel: { DEFAULT: "#242424", alt: "#2e2e2e" },
+              wash: { DEFAULT: "#1a1a1a", alt: "#2e2e2e", soft: "#202020" },
+              pos: { DEFAULT: "#4dbc3b", soft: "#1e2f1a" },
+              warn: { DEFAULT: "#fae34b", soft: "#332d12", line: "#7a6a22" },
+            },
+            fontFamily: {
+              sans: ['"Barlow Semi Condensed"', "Arial Narrow", "system-ui", "sans-serif"],
+              display: ['"Barlow Condensed"', "Arial Narrow", "system-ui", "sans-serif"],
+            },
+            // kicker rundet fast nichts ab (2-6px). Bewusst auch fuer die
+            // grossen Stufen klein gehalten: ein uebersehenes "rounded-xl"
+            // faellt damit nicht aus dem System.
+            borderRadius: {
+              none: "0",
+              DEFAULT: "2px",
+              sm: "2px",
+              md: "2px",
+              lg: "3px",
+              xl: "3px",
+              "2xl": "3px",
+              full: "9999px",
+            },
+          },
+        },
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body class="min-h-screen text-ink">
+    <header class="sticky top-0 z-40">
+      <div class="bg-maroon">
+        <div class="max-w-5xl mx-auto px-4 h-11 flex items-baseline gap-3">
+          <span class="font-display text-white text-2xl font-bold leading-none tracking-tight">
+            Kicker<span class="text-white/55 font-semibold"> Managerspiel Tool</span>
+          </span>
+        </div>
+      </div>
+      <nav class="bg-panel border-b border-line">
+        <div class="max-w-5xl mx-auto px-4 flex items-stretch gap-1 overflow-x-auto">
+          <a href="#/live" data-nav-link class="nav-link">Punkte</a>
+          <a href="#/grades" data-nav-link class="nav-link">Noten</a>
+          <a href="#/squad" data-nav-link class="nav-link">Kader</a>
+          <a href="#/settings" data-nav-link class="nav-link ml-auto">Einstellungen</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="app" class="max-w-5xl mx-auto px-4 py-6"></main>
+
+    <div id="toast" class="hidden"></div>
+
+    <!--
+      Bewusst klassische <script>-Tags statt ES-Modulen: nur so lässt sich
+      diese Datei auch per Doppelklick (file://) öffnen. Reihenfolge =
+      Abhängigkeitsreihenfolge, main.js startet den Router zum Schluss.
+    -->
+    <script src="js/config.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/espn.js"></script>
+    <script src="js/images.js"></script>
+    <script src="js/positions.js"></script>
+    <script src="js/vereine.js"></script>
+    <script src="js/formations.js"></script>
+    <script src="js/pitch.js"></script>
+    <script src="js/scoring.js"></script>
+    <script src="js/matchdays.js"></script>
+    <script src="js/matchdayData.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/views/lineupEditor.js"></script>
+    <script src="js/views/live.js"></script>
+    <script src="js/views/grades.js"></script>
+    <script src="js/views/squad.js"></script>
+    <script src="js/views/settings.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
