@@ -318,11 +318,16 @@ window.KT.views = window.KT.views || {};
           c.hasLineup
             ? '  <div id="' + wrapperId + '" class="pitch pitch-compact relative w-full max-w-lg mx-auto aspect-[3/4] overflow-hidden"></div>'
             : '  <p class="text-mute text-sm text-center mb-2">Noch keine Aufstellung für diesen Spieltag.</p>',
-          '  <div class="flex justify-center mt-3">',
-          '    <button data-edit-lineup="' + c.competitorId + '" class="kt-btn kt-btn-secondary">',
-          "      Aufstellung bearbeiten",
-          "    </button>",
-          "  </div>",
+          // Ohne Anmeldung gar nicht erst anbieten: Der Editor wuerde sich
+          // oeffnen lassen, aber jedes Speichern am Passwortschutz des
+          // Backends scheitern - erst nach getaner Arbeit.
+          KT.auth.istOffen()
+            ? '  <div class="flex justify-center mt-3">' +
+              '    <button data-edit-lineup="' + c.competitorId + '" class="kt-btn kt-btn-secondary">' +
+              "      Aufstellung bearbeiten" +
+              "    </button>" +
+              "  </div>"
+            : "",
           "</div>",
         ].join("\n");
       }

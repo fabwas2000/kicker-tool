@@ -28,6 +28,23 @@ window.KT = window.KT || {};
     var container = document.getElementById("app");
     container.innerHTML = "";
 
+    // Geschuetzte Seiten ohne Anmeldung gar nicht erst aufbauen. Bewusst
+    // eine Erklaerung statt einer stillen Umleitung: Wer ein Lesezeichen auf
+    // "#/grades" hat, soll erfahren warum nichts passiert, statt wortlos auf
+    // der Punktetabelle zu landen.
+    if (KT.auth.istGeschuetzt(path) && !KT.auth.istOffen()) {
+      container.innerHTML = [
+        '<div class="kt-panel max-w-md mx-auto p-6 text-center">',
+        '  <h1 class="font-display text-2xl font-bold uppercase tracking-tight">Anmeldung nötig</h1>',
+        '  <p class="text-mute text-sm mt-2 mb-5">Diese Seite ist zum Ändern da.',
+        "    Die Punktetabelle und die Aufstellungen kannst du ohne Anmeldung ansehen.</p>",
+        '  <button type="button" id="hier-anmelden" class="kt-btn kt-btn-primary">Anmelden</button>',
+        "</div>",
+      ].join("\n");
+      container.querySelector("#hier-anmelden").addEventListener("click", KT.auth.dialogOeffnen);
+      return;
+    }
+
     // Ein Fehler in einer View darf nicht die ganze App lahmlegen - sonst
     // sieht der Nutzer nur eine leere Seite ohne jeden Hinweis.
     Promise.resolve()
@@ -54,5 +71,7 @@ window.KT = window.KT || {};
       window.addEventListener("hashchange", renderCurrentRoute);
       renderCurrentRoute();
     },
+    /** Aktuelle Seite neu aufbauen - z.B. nach dem An- oder Abmelden. */
+    refresh: renderCurrentRoute,
   };
 })(window.KT);

@@ -42,20 +42,9 @@ window.KT.views = window.KT.views || {};
       "  </div>",
 
       '  <div id="passwort-section">',
-      '    <h2 class="font-display text-xl font-bold uppercase tracking-tight mb-1">Passwort</h2>',
-      '    <p class="text-mute text-sm mb-4">Nötig, um etwas zu ändern (Noten, Aufstellungen, Kader).',
-      "      Ansehen geht ohne. Einmal je Gerät eintragen, danach gemerkt.</p>",
-      '    <form id="passwort-form" class="space-y-3">',
-      '      <label class="kt-eyebrow block" for="passwort-feld">Passwort für Änderungen</label>',
-      '      <input id="passwort-feld" type="password" autocomplete="current-password"',
-      '        placeholder="nur nötig beim öffentlich erreichbaren Backend"',
-      '        class="kt-input w-full" value="' + escapeHtml(KT.config.getPasswort()) + '" />',
-      '      <div class="flex gap-2">',
-      '        <button type="submit" class="kt-btn kt-btn-primary">Speichern</button>',
-      '        <button type="button" id="passwort-testen" class="kt-btn kt-btn-secondary">Passwort prüfen</button>',
-      "      </div>",
-      '      <p id="passwort-status" class="text-sm"></p>',
-      "    </form>",
+      '    <h2 class="font-display text-xl font-bold uppercase tracking-tight mb-1">Anmeldung</h2>',
+      '    <p class="text-mute text-sm">Du bist angemeldet - sonst wäre diese Seite gar nicht',
+      "      erreichbar. Abmelden kannst du dich oben rechts.</p>",
       "  </div>",
 
       '  <div id="rules-section">',
@@ -97,50 +86,6 @@ window.KT.views = window.KT.views || {};
         .catch(function (err) {
           statusEl.textContent = "✗ Nicht erreichbar: " + (err.message || err);
           statusEl.className = "text-sm text-kicker font-semibold";
-        });
-    });
-
-    // ---------------- Passwort ----------------
-    var passwortFeld = container.querySelector("#passwort-feld");
-    var passwortStatus = container.querySelector("#passwort-status");
-
-    /** Sagt, ob dieses Backend ueberhaupt ein Passwort verlangt. */
-    function zeigeObNoetig() {
-      KT.api
-        .getAuthStatus()
-        .then(function (status) {
-          if (status && status.passwort_noetig) return;
-          passwortStatus.textContent =
-            "Dieses Backend verlangt kein Passwort (läuft lokal). Feld kann leer bleiben.";
-          passwortStatus.className = "text-sm text-mute";
-        })
-        .catch(function () {
-          /* Backend nicht erreichbar - die URL-Zeile oben meldet das bereits. */
-        });
-    }
-    zeigeObNoetig();
-
-    container.querySelector("#passwort-form").addEventListener("submit", function (e) {
-      e.preventDefault();
-      KT.config.setPasswort(passwortFeld.value.trim());
-      KT.ui.showInfo("Passwort gespeichert.");
-      passwortStatus.textContent = "";
-    });
-
-    container.querySelector("#passwort-testen").addEventListener("click", function () {
-      // Erst speichern, dann pruefen - sonst testet man den alten Wert.
-      KT.config.setPasswort(passwortFeld.value.trim());
-      passwortStatus.textContent = "Prüfe…";
-      passwortStatus.className = "text-sm text-mute";
-      KT.api
-        .checkPasswort()
-        .then(function () {
-          passwortStatus.textContent = "✓ Passwort stimmt, Änderungen sind möglich.";
-          passwortStatus.className = "text-sm text-pos font-semibold";
-        })
-        .catch(function (err) {
-          passwortStatus.textContent = "✗ " + KT.ui.backendErrorText(err);
-          passwortStatus.className = "text-sm text-kicker font-semibold";
         });
     });
 

@@ -77,9 +77,13 @@
       <nav class="bg-panel border-b border-line">
         <div class="max-w-5xl mx-auto px-4 flex items-stretch gap-1 overflow-x-auto">
           <a href="#/live" data-nav-link class="nav-link">Punkte</a>
-          <a href="#/grades" data-nav-link class="nav-link">Noten</a>
-          <a href="#/squad" data-nav-link class="nav-link">Kader</a>
-          <a href="#/settings" data-nav-link class="nav-link ml-auto">Einstellungen</a>
+          <!-- data-geschuetzt: nur sichtbar, wenn angemeldet. Siehe js/auth.js -->
+          <a href="#/grades" data-nav-link data-geschuetzt class="nav-link">Noten</a>
+          <a href="#/squad" data-nav-link data-geschuetzt class="nav-link">Kader</a>
+          <span class="ml-auto flex items-stretch gap-1">
+            <a href="#/settings" data-nav-link data-geschuetzt class="nav-link">Einstellungen</a>
+            <button type="button" id="auth-knopf" class="nav-link">Anmelden</button>
+          </span>
         </div>
       </nav>
     </header>
@@ -96,6 +100,7 @@
     <script src="js/config.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/espn.js"></script>
     <script src="js/images.js"></script>
     <script src="js/positions.js"></script>
