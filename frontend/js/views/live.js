@@ -12,7 +12,20 @@ window.KT.views = window.KT.views || {};
     // Ausgeklappte Konkurrenten. Bleibt ueber Neuzeichnen erhalten, damit ein
     // Live-Refresh nicht zuklappt, was man gerade offen hat.
     var expanded = new Set();
+    // Aufgeklappte Begegnungen (Ereignis-IDs). Getrennt von "expanded", damit
+    // ein offenes Spiel beim Live-Refresh nicht zuklappt und umgekehrt.
+    var offeneSpiele = new Set();
     var matchdayIndex = null;
+
+    // Punktestand je Spieler beim letzten Zeichnen - Grundlage dafuer, beim
+    // naechsten Mal zu erkennen, WER sich veraendert hat. Schluessel ist
+    // Konkurrent+Position, nicht der Spieler: derselbe Spieler kann bei
+    // mehreren Konkurrenten aufgestellt sein und soll dann auch mehrfach
+    // aufblitzen.
+    var letzterStand = new Map();
+    // Ergebnis des Vergleichs, gilt nur fuer das unmittelbar folgende
+    // Zeichnen: Schluessel -> "plus" oder "minus".
+    var frischVeraendert = new Map();
     // Zuletzt gerechnete Gesamtwertung, damit Auf- und Zuklappen einer Zeile
     // nicht alle Spieltage erneut laedt.
     var gesamtStand = null;
@@ -116,7 +129,36 @@ window.KT.views = window.KT.views || {};
       return "text-ink";
     }
 
-    function renderPlayerChip(entry) {
+    /**
+     * Vergleicht den neuen Punktestand mit dem letzten und merkt sich, wer
+     * sich veraendert hat.
+     *
+     * Beim ERSTEN Zeichnen wird bewusst nichts hervorgehoben: Da ist alles
+     * neu, und ein Spielfeld, auf dem elf Spieler gleichzeitig aufblitzen,
+     * hiesse gar nichts. Hervorgehoben wird nur eine echte Aenderung
+     * gegenueber dem, was man vorher gesehen hat.
+     */
+    function standVergleichen(scores) {
+      frischVeraendert = new Map();
+      scores.forEach(function (c) {
+        c.slots.forEach(function (slot) {
+          var schluessel = c.competitorId + ":" + slot.slot;
+          var vorher = letzterStand.get(schluessel);
+          if (vorher !== undefined && vorher !== slot.points) {
+            frischVeraendert.set(schluessel, slot.points > vorher ? "plus" : "minus");
+          }
+          letzterStand.set(schluessel, slot.points);
+        });
+      });
+    }
+
+    /** CSS-Klasse fuers kurze Aufblitzen, oder "" wenn unveraendert. */
+    function blitzKlasse(competitorId, slot) {
+      var richtung = frischVeraendert.get(competitorId + ":" + slot);
+      return richtung ? " punkte-blitz punkte-blitz-" + richtung : "";
+    }
+
+    function renderPlayerChip(entry, competitorId) {
       var match = entry.match;
       var badges = ereignisBadges(entry);
       var punkteFarbe = punkteFarbeFuer(entry);
@@ -173,7 +215,7 @@ window.KT.views = window.KT.views || {};
       return [
         '<div class="flex flex-col items-center w-full cursor-pointer" ' +
           'title="' + escapeHtml(entry.playerName) + ' – für die Punkte-Aufschlüsselung antippen">',
-        '  <div class="relative">',
+        '  <div class="relative' + blitzKlasse(competitorId, entry.slot) + '">',
         "    " + KT.images.avatarHtml(entry.playerId, entry.playerName, "pitch-photo", false),
         badges.length
           ? '    <div class="absolute -top-1 -left-1 leading-none text-[9px] bg-[#0c0c0c]/90 rounded-sm px-0.5 py-px whitespace-nowrap">' +
@@ -227,7 +269,7 @@ window.KT.views = window.KT.views || {};
           ' – für die Punkte-Aufschlüsselung antippen"',
           ' class="shrink-0 w-[46px] flex flex-col items-center gap-0.5 kt-focus kt-hover rounded-sm ' +
           (aufDemPlatz ? "" : "opacity-60") + '">',
-        '  <span class="relative block">',
+        '  <span class="relative block' + blitzKlasse(c.competitorId, entry.slot) + '">',
         "    " + KT.images.avatarHtml(entry.playerId, entry.playerName,
           "w-[40px] aspect-[4/5] object-cover object-top rounded-sm", false),
         badges.length
@@ -340,7 +382,80 @@ window.KT.views = window.KT.views || {};
       ].join("\n");
     }
 
+    /**
+     * Torschuetzen und Vorlagengeber einer Partie, nach Mannschaft getrennt.
+     *
+     * ESPN legt Tor und Vorlage als EIN Ereignis ab, unsere aufbereiteten
+     * Daten haengen sie aber an je einen Spieler. Zusammengefuehrt wird
+     * deshalb ueber Mannschaft + Minute - beide stammen aus demselben
+     * Ereignis und stimmen darum ueberein.
+     */
+    function torfolge(detail, teamId) {
+      if (!detail) return [];
+      var nachMinute = {};
+      Object.keys(detail.players).forEach(function (id) {
+        var p = detail.players[id];
+        if (p.teamId !== teamId) return;
+        (p.events || []).forEach(function (ev) {
+          var schluessel = ev.minute || "?";
+          var eintrag = nachMinute[schluessel] ||
+            (nachMinute[schluessel] = { minute: ev.minute, tore: [], vorlagen: [] });
+          (ev.kind === "goal" ? eintrag.tore : eintrag.vorlagen).push(p.playerName);
+        });
+      });
+
+      var liste = Object.keys(nachMinute)
+        .map(function (k) { return nachMinute[k]; })
+        .filter(function (e) { return e.tore.length; })
+        .sort(function (a, b) { return minuteAlsZahl(a.minute) - minuteAlsZahl(b.minute); });
+
+      // Eigentore stehen NICHT in den Ereignissen - ESPN zaehlt sie nicht als
+      // regulaeres Tor, und unsere Aufbereitung filtert sie bewusst heraus.
+      // Ohne sie ginge die Rechnung zum Spielstand aber nicht auf.
+      Object.keys(detail.players).forEach(function (id) {
+        var p = detail.players[id];
+        if (p.teamId === teamId || !p.ownGoals) return;
+        for (var n = 0; n < p.ownGoals; n++) {
+          liste.push({ minute: "", tore: [p.playerName], vorlagen: [], eigentor: true });
+        }
+      });
+      return liste;
+    }
+
+    /** "45+2'" -> 47, damit sich Minuten sortieren lassen. */
+    function minuteAlsZahl(minute) {
+      var teile = String(minute || "").match(/\d+/g);
+      if (!teile) return 999;
+      return teile.reduce(function (a, b) { return a + Number(b); }, 0);
+    }
+
+    function renderTorliste(detail, teamId, rechts) {
+      var eintraege = torfolge(detail, teamId);
+      if (!eintraege.length) {
+        return '<div class="text-mute text-xs">keine Tore</div>';
+      }
+      return eintraege
+        .map(function (e) {
+          var namen = e.tore.map(function (n) { return KT.ui.lastName(n); }).join(", ");
+          var vorlage = e.vorlagen.length
+            ? '<span class="text-mute"> · Vorlage ' +
+              escapeHtml(e.vorlagen.map(function (n) { return KT.ui.lastName(n); }).join(", ")) + "</span>"
+            : "";
+          return [
+            '<div class="text-xs py-0.5 ' + (rechts ? "text-right" : "") + '">',
+            '  <span class="text-ink font-semibold">' + escapeHtml(namen) + "</span>",
+            e.eigentor ? '  <span class="text-kicker"> (ET)</span>' : "",
+            e.minute ? '  <span class="text-mute-dark tabular-nums"> ' + escapeHtml(e.minute) + "</span>" : "",
+            vorlage,
+            "</div>",
+          ].join("");
+        })
+        .join("");
+    }
+
     function renderMatchList(events) {
+      var details = (currentBundle && currentBundle.details) || [];
+
       return [
         '<h2 class="kt-eyebrow mt-8 mb-2">Begegnungen</h2>',
         '<div class="kt-panel text-sm">',
@@ -354,8 +469,16 @@ window.KT.views = window.KT.views || {};
                   weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
                 })
               : (home.score || "0") + " : " + (away.score || "0");
-            return [
-              '<div class="kt-row kt-hover flex items-center justify-between gap-2 px-3 py-2">',
+
+            // Vor dem Anpfiff gibt es nichts aufzuklappen.
+            var aufklappbar = e.state !== "pre";
+            var offen = offeneSpiele.has(e.id);
+            var detail = details.filter(function (d) { return d.eventId === e.id; })[0] || null;
+
+            var zeile = [
+              "<" + (aufklappbar ? "button" : "div") + ' class="w-full kt-row kt-hover flex items-center ' +
+                'justify-between gap-2 px-3 py-2 text-left"' +
+                (aufklappbar ? ' data-spiel="' + escapeHtml(e.id) + '" aria-expanded="' + offen + '"' : "") + ">",
               '  <span class="flex-1 min-w-0 flex items-center justify-end gap-1.5 text-right truncate">' +
                 // Kurzform: die Zeile ist beidseitig eng, volle Namen wuerden
                 // auf dem Handy abgeschnitten - der kicker-Ticker kuerzt auch.
@@ -372,8 +495,21 @@ window.KT.views = window.KT.views || {};
               // Anstosszeit steht schon in der Mitte, das waere nur Rauschen.
               '  <span class="text-xs w-12 text-right ' + (laeuft ? "text-kicker font-semibold" : "text-mute") + '">' +
                 escapeHtml(e.state === "pre" ? "" : e.statusDetail || "") + "</span>",
-              "</div>",
+              '  <span class="text-mute text-xs w-3 text-center">' +
+                (aufklappbar ? (offen ? "▾" : "▸") : "") + "</span>",
+              "</" + (aufklappbar ? "button" : "div") + ">",
             ].join("\n");
+
+            if (!offen) return zeile;
+
+            var inhalt = detail
+              ? '<div class="grid grid-cols-2 gap-3 px-3 py-2">' +
+                "<div>" + renderTorliste(detail, home.teamId, true) + "</div>" +
+                "<div>" + renderTorliste(detail, away.teamId, false) + "</div>" +
+                "</div>"
+              : '<div class="px-3 py-2 text-mute text-xs">Für dieses Spiel liegen noch keine Daten vor.</div>';
+
+            return zeile + '<div class="border-t border-line/60 bg-wash-soft">' + inhalt + "</div>";
           })
           .join(""),
         "</div>",
@@ -400,6 +536,7 @@ window.KT.views = window.KT.views || {};
         bundle.competitors, bundle.matchByPlayerId, bundle.manualByPlayerId, bundle.rules
       );
       currentScores = scores;
+      standVergleichen(scores);
 
       // Kein erklaerender Satz mehr ueber der Tabelle: dass ein Spieltag noch
       // nicht begonnen hat, steht schon in der Statuszeile unter der
@@ -436,7 +573,7 @@ window.KT.views = window.KT.views || {};
               'flex items-center justify-center text-[9px] text-white/50 font-semibold uppercase">' +
               slotDef.label + "</div>";
           }
-          return renderPlayerChip(entry);
+          return renderPlayerChip(entry, c.competitorId);
         });
       });
     }
@@ -840,6 +977,16 @@ window.KT.views = window.KT.views || {};
           return String(c.competitorId) === String(teile[0]);
         })[0];
         if (liveEntry) openDetail(liveEntry, liveComp ? liveComp.competitorName : "");
+        return;
+      }
+
+      // Begegnung auf- oder zuklappen.
+      var spielBtn = e.target.closest("[data-spiel]");
+      if (spielBtn) {
+        var eid = spielBtn.dataset.spiel;
+        if (offeneSpiele.has(eid)) offeneSpiele.delete(eid);
+        else offeneSpiele.add(eid);
+        if (currentBundle) render(currentBundle);
         return;
       }
 

@@ -347,3 +347,34 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Kurzes Aufblitzen, wenn sich die Punkte eines Spielers aendern.
+   Nur bei einer echten Aenderung gegenueber dem vorher Gesehenen - siehe
+   standVergleichen() in views/live.js.
+
+   Der Rahmen liegt als box-shadow AUSSEN um das Foto, damit er nichts vom
+   Bild verdeckt. Zusaetzlich ein kurzes Anheben: Farbe allein wuerde auf
+   einem Spielfeld voller roter und gruener Zahlen untergehen. */
+@keyframes punkte-blitz-auf {
+  0%   { box-shadow: 0 0 0 0 var(--blitz-farbe); transform: scale(1); }
+  18%  { box-shadow: 0 0 0 3px var(--blitz-farbe); transform: scale(1.12); }
+  45%  { box-shadow: 0 0 0 3px var(--blitz-farbe); transform: scale(1.04); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); transform: scale(1); }
+}
+
+.punkte-blitz {
+  animation: punkte-blitz-auf 1.8s ease-out 1;
+  border-radius: 2px;
+}
+
+.punkte-blitz-plus { --blitz-farbe: #4dbc3b; }
+.punkte-blitz-minus { --blitz-farbe: #ff5c4d; }
+
+/* Wer Bewegung abgestellt hat, bekommt denselben Hinweis ohne Zappeln. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes punkte-blitz-auf {
+    0%, 70% { box-shadow: 0 0 0 3px var(--blitz-farbe); }
+    100%    { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+  }
+  .punkte-blitz { animation-duration: 2.4s; }
+}
