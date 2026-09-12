@@ -429,23 +429,50 @@ window.KT.views = window.KT.views || {};
       return teile.reduce(function (a, b) { return a + Number(b); }, 0);
     }
 
-    function renderTorliste(detail, teamId, rechts) {
+    /**
+     * Tore einer Mannschaft, untereinander.
+     *
+     * Ausgerichtet wird nach AUSSEN, nicht zur Mitte: Die Heimmannschaft
+     * steht linksbuendig am linken Rand, die Gastmannschaft rechtsbuendig am
+     * rechten. Vorher hingen beide Spalten an der Mittellinie, wo lange Namen
+     * mit Vorlagengeber ineinanderliefen.
+     *
+     * Je Tor zwei Zeilen - Torschuetze mit Minute, darunter klein der
+     * Vorlagengeber. Als eine Zeile ("Prömel 60' · Vorlage Mittelstädt") war
+     * es auf dem Handy zu lang und die Namen gingen ineinander ueber.
+     */
+    function renderTorliste(detail, teamId, nachRechts) {
       var eintraege = torfolge(detail, teamId);
       if (!eintraege.length) {
-        return '<div class="text-mute text-xs">keine Tore</div>';
+        return '<div class="text-xs text-mute ' + (nachRechts ? "text-right" : "") + '">keine Tore</div>';
       }
       return eintraege
         .map(function (e) {
-          var namen = e.tore.map(function (n) { return KT.ui.lastName(n); }).join(", ");
+          var namen = escapeHtml(e.tore.map(function (n) { return KT.ui.lastName(n); }).join(", "));
+          var kopf = [
+            '<span class="text-ink font-semibold truncate">' + namen + "</span>",
+            e.eigentor ? '<span class="text-kicker shrink-0">(ET)</span>' : "",
+            e.minute
+              ? '<span class="text-mute-dark tabular-nums shrink-0">' + escapeHtml(e.minute) + "</span>"
+              : "",
+          ].join("");
+
           var vorlage = e.vorlagen.length
-            ? '<span class="text-mute"> · Vorlage ' +
-              escapeHtml(e.vorlagen.map(function (n) { return KT.ui.lastName(n); }).join(", ")) + "</span>"
+            ? '<div class="text-[11px] text-mute truncate leading-tight ' +
+              (nachRechts ? 'text-right pr-5' : 'pl-5') + '">' +
+              escapeHtml(e.vorlagen.map(function (n) { return KT.ui.lastName(n); }).join(", ")) +
+              "</div>"
             : "";
+
           return [
-            '<div class="text-xs py-0.5 ' + (rechts ? "text-right" : "") + '">',
-            '  <span class="text-ink font-semibold">' + escapeHtml(namen) + "</span>",
-            e.eigentor ? '  <span class="text-kicker"> (ET)</span>' : "",
-            e.minute ? '  <span class="text-mute-dark tabular-nums"> ' + escapeHtml(e.minute) + "</span>" : "",
+            '<div class="text-xs py-1 min-w-0">',
+            // Der Ball sitzt aussen neben dem Namen, auf beiden Seiten
+            // spiegelbildlich - so liest sich jede Zeile von aussen nach innen.
+            '  <div class="flex items-baseline gap-1.5 min-w-0 ' +
+              (nachRechts ? "flex-row-reverse" : "") + '">',
+            '    <span class="shrink-0">⚽</span>',
+            "    " + kopf,
+            "  </div>",
             vorlage,
             "</div>",
           ].join("");
@@ -504,8 +531,8 @@ window.KT.views = window.KT.views || {};
 
             var inhalt = detail
               ? '<div class="grid grid-cols-2 gap-3 px-3 py-2">' +
-                "<div>" + renderTorliste(detail, home.teamId, true) + "</div>" +
-                "<div>" + renderTorliste(detail, away.teamId, false) + "</div>" +
+                "<div>" + renderTorliste(detail, home.teamId, false) + "</div>" +
+                "<div>" + renderTorliste(detail, away.teamId, true) + "</div>" +
                 "</div>"
               : '<div class="px-3 py-2 text-mute text-xs">Für dieses Spiel liegen noch keine Daten vor.</div>';
 
