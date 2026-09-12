@@ -488,7 +488,7 @@ window.KT.views = window.KT.views || {};
     // die ESPN wieder entfernt hat (Abseits, Videobeweis) - eine eigene
     // Meldung dafuer gibt es naemlich nicht, der Eintrag verschwindet
     // einfach.
-    var letzteSchluessel = new Set();
+    var letzteSchluessel = new Map();
     // Aberkannte Tore aus dieser Sitzung. Muessen aufgehoben werden: In den
     // Daten stehen sie ja gerade nicht mehr.
     var aberkannte = [];
@@ -514,19 +514,36 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Sortierwert eines Ereignisses.
+     * Sortierwert eines Ereignisses: die ECHTE Uhrzeit als Zeitstempel.
      *
-     * ESPNs clock.value taugt allein nicht: Fuer "90'+2'" und "90'+5'" steht
-     * dort derselbe Wert (5400), die Nachspielzeit steckt nur in der
-     * Beschriftung. Ohne den Zuschlag stuenden Ereignisse derselben Minute in
-     * zufaelliger Reihenfolge - im Ticker faellt das sofort auf.
+     * Nicht die Spielminute. Ein Spieltag laeuft ueber drei Tage - ein Tor in
+     * der 90. Minute der Freitagspartie faellt lange vor einem Tor in der 10.
+     * Minute am Sonntag. Nach Spielminute sortiert stuende der Ticker kopf.
+     *
+     * ESPN liefert dafuer "wallclock". Fehlt das (aeltere Daten), wird aus
+     * Anpfiff plus Spielzeit geschaetzt - grob, aber immer noch besser als
+     * die blosse Spielminute.
      */
-    function ereignisZeit(ev) {
-      var zuschlag = String(ev.minute || "").match(/\+\s*(\d+)/);
-      return (ev.sekunde || 0) + (zuschlag ? Number(zuschlag[1]) : 0);
+    function ereignisZeit(ev, spiel) {
+      if (ev.zeit) {
+        var t = Date.parse(ev.zeit);
+        if (!isNaN(t)) return t;
+      }
+      var anpfiff = spiel && spiel.date ? Date.parse(spiel.date) : 0;
+      if (isNaN(anpfiff)) anpfiff = 0;
+      // Nach der 45. Minute die Halbzeitpause mitrechnen, sonst laegen die
+      // zweiten Halbzeiten aller Partien zu frueh.
+      var pause = (ev.sekunde || 0) > 2700 ? 15 * 60 : 0;
+      return anpfiff + ((ev.sekunde || 0) + pause) * 1000;
     }
 
+    /**
+     * Wiedererkennungsmerkmal eines Ereignisses ueber mehrere Abrufe hinweg.
+     * ESPN vergibt eigene Kennungen - die sind stabiler als alles
+     * Zusammengesetzte. Nur falls eine fehlt, wird ersatzweise gebaut.
+     */
     function ereignisSchluessel(eventId, ev) {
+      if (ev.id) return eventId + "|" + ev.id;
       return [
         eventId,
         ev.art,
@@ -553,7 +570,9 @@ window.KT.views = window.KT.views || {};
         nameJeEvent[e.id] = e;
       });
 
-      var jetztSchluessel = new Set();
+      // Map statt Set: Verschwindet ein Tor, brauchen wir noch Minute,
+      // Verein und Schuetzen - aus den aktuellen Daten sind sie dann weg.
+      var jetztSchluessel = new Map();
       var liste = [];
 
       (bundle.details || []).forEach(function (d) {
@@ -563,7 +582,14 @@ window.KT.views = window.KT.views || {};
           if (!art) return;
 
           var schluessel = ereignisSchluessel(d.eventId, ev);
-          if (art === "tor" || art === "eigentor") jetztSchluessel.add(schluessel);
+          if (art === "tor" || art === "eigentor") {
+            jetztSchluessel.set(schluessel, {
+              spielId: d.eventId,
+              minute: ev.minute,
+              teamId: ev.teamId,
+              beteiligte: ev.beteiligte,
+            });
+          }
 
           if (art !== "tor" && art !== "eigentor") {
             var betrifftUns = ev.beteiligte.some(function (b) {
@@ -575,7 +601,7 @@ window.KT.views = window.KT.views || {};
           liste.push({
             art: art,
             minute: ev.minute,
-            sekunde: ereignisZeit(ev),
+            sekunde: ereignisZeit(ev, spiel),
             teamId: ev.teamId,
             spiel: spiel,
             beteiligte: ev.beteiligte,
@@ -592,19 +618,24 @@ window.KT.views = window.KT.views || {};
         laeuftGerade[e.id] = e.state === "in";
       });
       if (letzteSchluessel.size) {
-        letzteSchluessel.forEach(function (alt) {
-          if (jetztSchluessel.has(alt)) return;
-          var teile = alt.split("|");
-          if (!laeuftGerade[teile[0]]) return;
+        letzteSchluessel.forEach(function (vorher, schluessel) {
+          if (jetztSchluessel.has(schluessel)) return;
+          if (!laeuftGerade[vorher.spielId]) return;
           if (aberkannte.length >= TICKER_MAX) aberkannte.shift();
           aberkannte.push({
             art: "aberkannt",
-            minute: "",
-            sekunde: Number(teile[2]) || 0,
-            teamId: null,
-            spiel: nameJeEvent[teile[0]],
-            beteiligte: [],
-            schluessel: alt + "|weg",
+            // Die Spielminute des urspruenglichen Tores - dafuer wird der
+            // letzte Stand gemerkt, denn in den Daten steht das Tor ja
+            // gerade nicht mehr.
+            minute: vorher.minute,
+            // Als Zeit gilt JETZT, nicht der Zeitpunkt des Tores: Die
+            // Aberkennung ist die frische Nachricht und gehoert an den
+            // Anfang des Tickers.
+            sekunde: Date.now(),
+            teamId: vorher.teamId,
+            spiel: nameJeEvent[vorher.spielId],
+            beteiligte: vorher.beteiligte,
+            schluessel: schluessel + "|weg",
           });
         });
       }
@@ -648,7 +679,8 @@ window.KT.views = window.KT.views || {};
           : vereinKurz;
       } else if (e.art === "aberkannt") {
         haupt = "Tor aberkannt";
-        neben = e.spiel ? e.spiel.shortName || "" : "";
+        var schuetze = (e.beteiligte[0] || {}).name;
+        neben = schuetze ? vereinKurz + " · " + KT.ui.lastName(schuetze) : vereinKurz;
       } else {
         haupt = KT.ui.lastName((e.beteiligte[0] || {}).name || "");
         neben = vereinKurz;

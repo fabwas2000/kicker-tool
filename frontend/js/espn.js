@@ -232,7 +232,7 @@ window.KT = window.KT || {};
   // wurde, kennt neue Felder nicht. Beim Nachruesten der Wappen hat genau das
   // schon einmal zu einer stillen Luecke gefuehrt. Wird das Format erweitert,
   // wird hier hochgezaehlt - dann bauen sich die Eintraege einmal neu auf.
-  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v2:";
+  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v3:";
 
   function statValue(player, name) {
     var stats = player.stats || [];
@@ -275,11 +275,19 @@ window.KT = window.KT || {};
           })
           .filter(Boolean);
         return {
+          // Stabile Kennung von ESPN. Damit laesst sich ein Ereignis ueber
+          // mehrere Abrufe hinweg wiedererkennen - noetig, um ein spaeter
+          // aberkanntes Tor zu bemerken.
+          id: ev.id || null,
           art: (ev.type && ev.type.type) || "",
           minute: (ev.clock && ev.clock.displayValue) || "",
-          // Sekunden zum Sortieren - "45'+2'" liesse sich sonst nicht
-          // zuverlaessig gegen "46'" stellen.
+          // Sekunden seit Anpfiff DIESES Spiels.
           sekunde: (ev.clock && ev.clock.value) || 0,
+          // Echte Uhrzeit. Die Spielminute taugt nicht zum Sortieren ueber
+          // mehrere Partien hinweg: Ein Tor in der 90. Minute der
+          // Freitagspartie faellt lange VOR einem Tor in der 10. Minute am
+          // Sonntag.
+          zeit: ev.wallclock || null,
           teamId: (ev.team && ev.team.id) || null,
           tor: ev.scoringPlay === true,
           beteiligte: beteiligte,
