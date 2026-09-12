@@ -32,6 +32,24 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
+      # Versionsnummer an die eigenen Dateien haengen.
+      #
+      # GitHub Pages liefert alles mit "Cache-Control: max-age=600" aus. Ein
+      # Browser, der die Seite schon kennt, benutzt js- und css-Dateien also
+      # bis zu zehn Minuten weiter, ohne nachzufragen - eine Aenderung war
+      # erst nach hartem Neuladen zu sehen.
+      #
+      # Mit der Commit-Kennung in der Adresse ist jede Datei nach einem
+      # Deploy eine NEUE Adresse, die der Browser gar nicht im Speicher haben
+      # kann. index.html selbst traegt ein ETag und wird beim Neuladen ohnehin
+      # geprueft; darueber erfaehrt der Browser die neuen Adressen.
+      #
+      # Im Arbeitsverzeichnis bleibt "?v=DEV" stehen - lokal wird ohnehin
+      # jedes Mal neu geladen.
+      - name: Dateien versionieren
+        run: sed -i "s/?v=DEV/?v=${GITHUB_SHA:0:8}/g" frontend/index.html
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
