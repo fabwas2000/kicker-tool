@@ -53,7 +53,7 @@ async def schreibschutz(request: Request, call_next):
         if not hmac.compare_digest(mitgeschickt, APP_PASSWORD):
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Passwort fehlt oder ist falsch. Unter „Einstellungen“ eintragen."},
+                content={"detail": "Passwort fehlt oder ist falsch. Oben rechts neu anmelden."},
             )
     return await call_next(request)
 
