@@ -227,7 +227,12 @@ window.KT = window.KT || {};
   // Spieldetails: wer hat gespielt, wer hat getroffen, wer sass draussen
   // ---------------------------------------------------------------------
 
-  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:";
+  // Die Kennung traegt eine Versionsnummer: Beendete Spiele liegen dauerhaft
+  // im localStorage, und ein Eintrag, der vor einer Erweiterung geschrieben
+  // wurde, kennt neue Felder nicht. Beim Nachruesten der Wappen hat genau das
+  // schon einmal zu einer stillen Luecke gefuehrt. Wird das Format erweitert,
+  // wird hier hochgezaehlt - dann bauen sich die Eintraege einmal neu auf.
+  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v2:";
 
   function statValue(player, name) {
     var stats = player.stats || [];
@@ -242,6 +247,47 @@ window.KT = window.KT || {};
    * braucht. Das Ergebnis ist klein genug, um es pro Spiel in localStorage zu
    * cachen - abgeschlossene Spiele muessen so nie erneut geladen werden.
    */
+  /**
+   * Die Ereignisse eines Spiels in unserer eigenen, schlanken Form.
+   *
+   * ESPN liefert unter keyEvents alles: Tore, Karten, Auswechslungen, aber
+   * auch Anpfiff und Halbzeit. Hier bleibt nur, was im Ticker etwas zu
+   * suchen hat.
+   *
+   * Die Art wird NICHT auf feste Kennungen abgebildet, sondern als
+   * Zeichenkette uebernommen ("goal---header", "yellow-red-card", ...). ESPN
+   * hat viele Spielarten davon, und eine feste Liste waere bei der naechsten
+   * unbekannten Variante still unvollstaendig. Ausgewertet wird spaeter ueber
+   * Teilzeichenketten.
+   */
+  function ereignisseAusSummary(data) {
+    var IGNORIEREN = /^(kickoff|halftime|start-2nd-half|end-regular-time|end-of-game|penalty-shootout)/;
+
+    return (data.keyEvents || [])
+      .filter(function (ev) {
+        var art = (ev.type && ev.type.type) || "";
+        return art && !IGNORIEREN.test(art);
+      })
+      .map(function (ev) {
+        var beteiligte = (ev.participants || [])
+          .map(function (t) {
+            return t && t.athlete ? { id: t.athlete.id, name: t.athlete.displayName } : null;
+          })
+          .filter(Boolean);
+        return {
+          art: (ev.type && ev.type.type) || "",
+          minute: (ev.clock && ev.clock.displayValue) || "",
+          // Sekunden zum Sortieren - "45'+2'" liesse sich sonst nicht
+          // zuverlaessig gegen "46'" stellen.
+          sekunde: (ev.clock && ev.clock.value) || 0,
+          teamId: (ev.team && ev.team.id) || null,
+          tor: ev.scoringPlay === true,
+          beteiligte: beteiligte,
+          text: ev.text || ev.shortText || "",
+        };
+      });
+  }
+
   function distillSummary(data, event) {
     var players = {};
     var goalMinutes = {};
@@ -303,6 +349,7 @@ window.KT = window.KT || {};
       statusDetail: event.statusDetail,
       competitors: event.competitors,
       players: players,
+      ereignisse: ereignisseAusSummary(data),
     };
   }
 

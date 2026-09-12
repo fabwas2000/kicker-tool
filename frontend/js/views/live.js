@@ -480,6 +480,208 @@ window.KT.views = window.KT.views || {};
         .join("");
     }
 
+    // ------------------------------------------------------------------
+    // Live-Ticker
+    // ------------------------------------------------------------------
+
+    // Ereignis-Schluessel des letzten Durchlaufs. Daraus erkennen wir Tore,
+    // die ESPN wieder entfernt hat (Abseits, Videobeweis) - eine eigene
+    // Meldung dafuer gibt es naemlich nicht, der Eintrag verschwindet
+    // einfach.
+    var letzteSchluessel = new Set();
+    // Aberkannte Tore aus dieser Sitzung. Muessen aufgehoben werden: In den
+    // Daten stehen sie ja gerade nicht mehr.
+    var aberkannte = [];
+
+    var TICKER_MAX = 20;
+
+    /**
+     * Welche Sorte Ereignis ist das? Geprueft wird ueber Teilzeichenketten,
+     * weil ESPN viele Spielarten kennt ("goal---header", "penalty-goal",
+     * "own-goal") und eine feste Liste bei der naechsten stillschweigend
+     * unvollstaendig waere.
+     */
+    function ereignisArt(ev) {
+      var a = ev.art || "";
+      if (/own-goal/.test(a)) return "eigentor";
+      if (ev.tor || /goal/.test(a)) return "tor";
+      if (/yellow-red|second-yellow/.test(a)) return "gelbrot";
+      if (/red-card/.test(a)) return "rot";
+      if (/substitution/.test(a)) return "wechsel";
+      return null;
+    }
+
+    /**
+     * Sortierwert eines Ereignisses.
+     *
+     * ESPNs clock.value taugt allein nicht: Fuer "90'+2'" und "90'+5'" steht
+     * dort derselbe Wert (5400), die Nachspielzeit steckt nur in der
+     * Beschriftung. Ohne den Zuschlag stuenden Ereignisse derselben Minute in
+     * zufaelliger Reihenfolge - im Ticker faellt das sofort auf.
+     */
+    function ereignisZeit(ev) {
+      var zuschlag = String(ev.minute || "").match(/\+\s*(\d+)/);
+      return (ev.sekunde || 0) + (zuschlag ? Number(zuschlag[1]) : 0);
+    }
+
+    function ereignisSchluessel(eventId, ev) {
+      return [
+        eventId,
+        ev.art,
+        ev.sekunde,
+        ev.beteiligte
+          .map(function (b) { return b.id; })
+          .join("+"),
+      ].join("|");
+    }
+
+    /**
+     * Sammelt die Ereignisse aller Partien fuer den Ticker.
+     *
+     * Tore kommen aus JEDEM Spiel - der Spielstand interessiert ohnehin.
+     * Karten und Auswechslungen nur, wenn ein Spieler beteiligt ist, der bei
+     * einem Konkurrenten aufgestellt ist: Sonst waeren es an einem Spieltag
+     * ueber hundert Meldungen, von denen fast keine mit der Wertung zu tun
+     * hat.
+     */
+    function tickerSammeln(bundle) {
+      var relevant = bundle.relevantPlayerIds || new Set();
+      var nameJeEvent = {};
+      (bundle.events || []).forEach(function (e) {
+        nameJeEvent[e.id] = e;
+      });
+
+      var jetztSchluessel = new Set();
+      var liste = [];
+
+      (bundle.details || []).forEach(function (d) {
+        var spiel = nameJeEvent[d.eventId];
+        (d.ereignisse || []).forEach(function (ev) {
+          var art = ereignisArt(ev);
+          if (!art) return;
+
+          var schluessel = ereignisSchluessel(d.eventId, ev);
+          if (art === "tor" || art === "eigentor") jetztSchluessel.add(schluessel);
+
+          if (art !== "tor" && art !== "eigentor") {
+            var betrifftUns = ev.beteiligte.some(function (b) {
+              return relevant.has(String(b.id));
+            });
+            if (!betrifftUns) return;
+          }
+
+          liste.push({
+            art: art,
+            minute: ev.minute,
+            sekunde: ereignisZeit(ev),
+            teamId: ev.teamId,
+            spiel: spiel,
+            beteiligte: ev.beteiligte,
+            schluessel: schluessel,
+          });
+        });
+      });
+
+      // Verschwundene Tore aufspueren - aber nur bei laufenden Partien. Bei
+      // beendeten Spielen kaeme eine Abweichung eher von einem neu
+      // aufgebauten Zwischenspeicher als von einem aberkannten Tor.
+      var laeuftGerade = {};
+      (bundle.events || []).forEach(function (e) {
+        laeuftGerade[e.id] = e.state === "in";
+      });
+      if (letzteSchluessel.size) {
+        letzteSchluessel.forEach(function (alt) {
+          if (jetztSchluessel.has(alt)) return;
+          var teile = alt.split("|");
+          if (!laeuftGerade[teile[0]]) return;
+          aberkannte.push({
+            art: "aberkannt",
+            minute: "",
+            sekunde: Number(teile[2]) || 0,
+            teamId: null,
+            spiel: nameJeEvent[teile[0]],
+            beteiligte: [],
+            schluessel: alt + "|weg",
+          });
+        });
+      }
+      letzteSchluessel = jetztSchluessel;
+
+      return liste
+        .concat(aberkannte)
+        .sort(function (a, b) { return b.sekunde - a.sekunde; })
+        .slice(0, TICKER_MAX);
+    }
+
+    var TICKER_SYMBOL = {
+      tor: "⚽",
+      eigentor: "⚽",
+      rot: "🟥",
+      gelbrot: "🟨🟥",
+      wechsel: "↔",
+      aberkannt: "⊘",
+    };
+
+    function renderTickerEintrag(e) {
+      var verein = e.spiel
+        ? (e.spiel.competitors || []).filter(function (c) { return c.teamId === e.teamId; })[0]
+        : null;
+      var vereinKurz = verein
+        ? KT.pitch.shortTeam(verein.teamName || "", verein.teamId)
+        : (e.spiel ? KT.pitch.shortTeam(e.spiel.competitors[0].teamName, e.spiel.competitors[0].teamId) : "");
+
+      var haupt, neben;
+      if (e.art === "tor" || e.art === "eigentor") {
+        haupt = KT.ui.lastName((e.beteiligte[0] || {}).name || "") + (e.art === "eigentor" ? " (ET)" : "");
+        // Verein IMMER dazu: Bei einem Tor aus irgendeinem Spiel ist die
+        // erste Frage "wer hat getroffen", die zweite "fuer wen".
+        neben = e.beteiligte[1]
+          ? vereinKurz + " · Vorlage " + KT.ui.lastName(e.beteiligte[1].name)
+          : vereinKurz;
+      } else if (e.art === "wechsel") {
+        haupt = KT.ui.lastName((e.beteiligte[0] || {}).name || "");
+        neben = e.beteiligte[1]
+          ? vereinKurz + " · für " + KT.ui.lastName(e.beteiligte[1].name)
+          : vereinKurz;
+      } else if (e.art === "aberkannt") {
+        haupt = "Tor aberkannt";
+        neben = e.spiel ? e.spiel.shortName || "" : "";
+      } else {
+        haupt = KT.ui.lastName((e.beteiligte[0] || {}).name || "");
+        neben = vereinKurz;
+      }
+
+      var farbe = e.art === "rot" || e.art === "gelbrot" || e.art === "aberkannt"
+        ? "text-kicker"
+        : "text-ink";
+
+      return [
+        '<div class="shrink-0 w-[164px] px-2 py-1.5 border-l border-line first:border-l-0">',
+        '  <div class="flex items-baseline gap-1 min-w-0">',
+        '    <span class="shrink-0 text-[11px]">' + TICKER_SYMBOL[e.art] + "</span>",
+        e.minute
+          ? '    <span class="shrink-0 text-[11px] text-mute-dark tabular-nums">' +
+            escapeHtml(e.minute) + "</span>"
+          : "",
+        '    <span class="truncate text-xs font-semibold ' + farbe + '">' + escapeHtml(haupt) + "</span>",
+        "  </div>",
+        '  <div class="text-[11px] text-mute truncate leading-tight">' + escapeHtml(neben) + "</div>",
+        "</div>",
+      ].join("");
+    }
+
+    function renderTicker(bundle) {
+      var eintraege = tickerSammeln(bundle);
+      if (!eintraege.length) return "";
+      return [
+        '<div class="kt-panel mb-4 overflow-hidden">',
+        '  <div class="flex overflow-x-auto divide-line">',
+        eintraege.map(renderTickerEintrag).join(""),
+        "  </div>",
+        "</div>",
+      ].join("\n");
+    }
+
     function renderMatchList(events) {
       var details = (currentBundle && currentBundle.details) || [];
 
@@ -574,6 +776,7 @@ window.KT.views = window.KT.views || {};
         : '<p class="text-mute mb-4">Noch keine Konkurrenten angelegt - unter „Kader“ anlegen.</p>';
 
       bodyEl.innerHTML =
+        renderTicker(bundle) +
         intro +
         '<div class="kt-panel">' +
         scores
