@@ -493,7 +493,9 @@ window.KT.views = window.KT.views || {};
     // Daten stehen sie ja gerade nicht mehr.
     var aberkannte = [];
 
-    var TICKER_MAX = 20;
+    // Nur die juengsten Ereignisse. Mehr war eine Wand aus Meldungen, in der
+    // das Aktuelle nicht mehr auffiel - und genau darum geht es im Ticker.
+    var TICKER_MAX = 5;
 
     /**
      * Welche Sorte Ereignis ist das? Geprueft wird ueber Teilzeichenketten,
@@ -594,6 +596,7 @@ window.KT.views = window.KT.views || {};
           if (jetztSchluessel.has(alt)) return;
           var teile = alt.split("|");
           if (!laeuftGerade[teile[0]]) return;
+          if (aberkannte.length >= TICKER_MAX) aberkannte.shift();
           aberkannte.push({
             art: "aberkannt",
             minute: "",
@@ -656,7 +659,7 @@ window.KT.views = window.KT.views || {};
         : "text-ink";
 
       return [
-        '<div class="shrink-0 w-[164px] px-2 py-1.5 border-l border-line first:border-l-0">',
+        '<div class="flex-1 min-w-[150px] px-2 py-1.5 border-l border-line first:border-l-0">',
         '  <div class="flex items-baseline gap-1 min-w-0">',
         '    <span class="shrink-0 text-[11px]">' + TICKER_SYMBOL[e.art] + "</span>",
         e.minute
