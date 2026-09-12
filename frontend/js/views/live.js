@@ -291,8 +291,15 @@ window.KT.views = window.KT.views || {};
 
     function renderLiveStrip(c) {
       var spieler = liveSpieler(c);
-      if (!spieler.length) return '<span class="flex-1 min-w-0"></span>';
+      // Nichts ausgeben, wenn niemand im Einsatz ist. Eine leere Leiste mit
+      // flex-1 hat sonst trotzdem den ganzen freien Platz belegt - die
+      // Namensspalte blieb bei ihrer Mindestbreite und schnitt die Zeile
+      // "gespielt 8/11 · benotet 3/8" ab.
+      if (!spieler.length) return "";
       return [
+        // Hoechstens die halbe Zeile: Name und Zaehler darunter sind
+        // wichtiger als die fuenfte Spielerkachel. Was nicht passt, laesst
+        // sich in der Leiste seitlich schieben.
         '<span class="flex-1 min-w-0 flex gap-1 overflow-x-auto py-0.5">',
         spieler
           .map(function (s) {
@@ -307,24 +314,38 @@ window.KT.views = window.KT.views || {};
       var wrapperId = "pitch-" + c.competitorId;
       var isOpen = expanded.has(c.competitorId);
 
-      var notPlayed = c.slots.filter(function (s) {
-        return !s.played;
+      // Wie viel von der Punktzahl steht schon fest? Eine hohe Zahl nach drei
+      // gespielten Spielern bedeutet etwas ganz anderes als dieselbe Zahl nach
+      // elf. Deshalb steht unter dem Namen, wie weit der Spieltag fuer diesen
+      // Konkurrenten gediehen ist.
+      var aufgestellt = c.slots.length;
+      var gespielt = c.slots.filter(function (s) {
+        return s.played;
       }).length;
-      var missingGrades = c.slots.filter(function (s) {
-        // "-" zaehlt als erledigt, nicht als offen.
-        return s.played && (s.grade === null || s.grade === undefined) && !s.noGrade;
+      var benotet = c.slots.filter(function (s) {
+        // "-" (bewusst keine Note) zaehlt als eingetragen, nicht als offen.
+        return s.played && ((s.grade !== null && s.grade !== undefined) || s.noGrade);
       }).length;
 
-      // "nicht im Einsatz" und "Note fehlt" erst NACH Abpfiff. Solange noch
-      // gespielt wird, sind beide Zahlen nur Zwischenstaende: wer auf der Bank
-      // sitzt, kann noch eingewechselt werden, und Noten gibt es ohnehin erst
-      // nach dem Spiel. Als Warnung waehrend des Spieltags waren sie Rauschen.
-      var hints = [];
+      // Der Nenner bei "benotet" ist bewusst die Zahl der EINGESETZTEN, nicht
+      // der aufgestellten Spieler: Wer nicht gespielt hat, kann keine Note
+      // bekommen. "3/11" liesse eine Luecke vermuten, die es gar nicht gibt.
+      var unterzeile, unterzeileFarbe;
       if (!c.hasLineup) {
-        hints.push("keine Aufstellung");
-      } else if (istBeendet) {
-        if (notPlayed) hints.push(notPlayed + "× nicht im Einsatz");
-        if (missingGrades) hints.push(missingGrades + "× Note fehlt");
+        unterzeile = "keine Aufstellung";
+        unterzeileFarbe = "text-mute";
+      } else if (!gespielt) {
+        // Noch niemand im Einsatz - dann ist die Formation die einzige
+        // Auskunft, die es ueberhaupt zu geben gibt.
+        unterzeile = c.formation || "";
+        unterzeileFarbe = "text-mute";
+      } else {
+        unterzeile =
+          "gespielt " + gespielt + "/" + aufgestellt +
+          " · benotet " + benotet + "/" + gespielt;
+        // Gelb nur nach Abpfiff: Waehrend gespielt wird, sind fehlende Noten
+        // normal, es gibt ja noch keine.
+        unterzeileFarbe = istBeendet && benotet < gespielt ? "text-warn" : "text-mute";
       }
 
       // Die Zeile ist ein div mit Knopf-Rolle, kein <button>: die Live-Kacheln
@@ -337,12 +358,14 @@ window.KT.views = window.KT.views || {};
           ' class="w-full flex items-center gap-2 sm:gap-3 px-3 py-2 text-left cursor-pointer ' +
           'kt-hover kt-focus transition-colors">',
         '  <span class="w-5 text-right font-semibold text-mute tabular-nums shrink-0">' + rank + "</span>",
-        '  <span class="w-28 sm:w-44 shrink-0 min-w-0">',
+        // Feste Breite, die fuer "gespielt 11/11 · benotet 0/11" reicht.
+        // Bewusst NICHT mitwachsend: Mit flex-1 (Basis 0) wurde der Name
+        // neben der Live-Leiste auf "Si..." zusammengequetscht, weil die
+        // Leiste ihre Inhaltsbreite behielt und kaum Platz uebrig liess.
+        '  <span class="w-40 sm:w-52 shrink-0 min-w-0">',
         '    <span class="block font-semibold text-ink truncate leading-tight">' + escapeHtml(c.competitorName) + "</span>",
-        hints.length
-          ? '    <span class="block text-[11px] ' + (c.hasLineup ? "text-warn" : "text-mute") +
-            ' truncate">' + escapeHtml(hints.join(" · ")) + "</span>"
-          : '    <span class="block text-[11px] text-mute truncate">' + escapeHtml(c.formation || "") + "</span>",
+        '    <span class="block text-[11px] ' + unterzeileFarbe + ' truncate">' +
+          escapeHtml(unterzeile) + "</span>",
         "  </span>",
         renderLiveStrip(c),
         // Die Punktespalte ist bei kicker die eine rote Zahl in der Tabelle.
