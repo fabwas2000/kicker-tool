@@ -291,11 +291,14 @@ window.KT.views = window.KT.views || {};
 
     function renderLiveStrip(c) {
       var spieler = liveSpieler(c);
-      // Nichts ausgeben, wenn niemand im Einsatz ist. Eine leere Leiste mit
-      // flex-1 hat sonst trotzdem den ganzen freien Platz belegt - die
-      // Namensspalte blieb bei ihrer Mindestbreite und schnitt die Zeile
-      // "gespielt 8/11 · benotet 3/8" ab.
-      if (!spieler.length) return "";
+      // Ist niemand im Einsatz, bleibt ein LEERER Platzhalter stehen - er
+      // schiebt die Punktzahl an den rechten Rand. Ohne ihn rutschte sie in
+      // Zeilen ohne Live-Spieler bis an den Namen heran, und die Spalte war
+      // von Zeile zu Zeile woanders.
+      //
+      // Dass er den Namen zusammenquetscht, kann nicht mehr passieren: Die
+      // Namensspalte hat eine feste Breite und gibt nichts mehr ab.
+      if (!spieler.length) return '<span class="flex-1 min-w-0"></span>';
       return [
         // Hoechstens die halbe Zeile: Name und Zaehler darunter sind
         // wichtiger als die fuenfte Spielerkachel. Was nicht passt, laesst
