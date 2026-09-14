@@ -232,7 +232,7 @@ window.KT = window.KT || {};
   // wurde, kennt neue Felder nicht. Beim Nachruesten der Wappen hat genau das
   // schon einmal zu einer stillen Luecke gefuehrt. Wird das Format erweitert,
   // wird hier hochgezaehlt - dann bauen sich die Eintraege einmal neu auf.
-  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v3:";
+  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v4:";
 
   function statValue(player, name) {
     var stats = player.stats || [];
@@ -299,6 +299,20 @@ window.KT = window.KT || {};
   function distillSummary(data, event) {
     var players = {};
     var goalMinutes = {};
+    // Art des Platzverweises je Spieler: "gelbrot" oder "rot".
+    //
+    // Die Spielerstatistik fuehrt nur "redCards" und zaehlt beides zusammen -
+    // eine Gelb-Rote ist dort von einer glatten Roten nicht zu unterscheiden.
+    // Nur die Ereignisliste nennt die Art, und die beiden kosten
+    // unterschiedlich viele Punkte.
+    var platzverweise = {};
+    (data.keyEvents || []).forEach(function (ev) {
+      var art = (ev.type && ev.type.type) || "";
+      if (!/red-card/.test(art)) return;
+      var athlete = (ev.participants || [])[0] && ev.participants[0].athlete;
+      if (!athlete) return;
+      platzverweise[athlete.id] = /yellow-red|second-yellow/.test(art) ? "gelbrot" : "rot";
+    });
 
     (data.keyEvents || []).forEach(function (ev) {
       var type = ev.type || {};
@@ -346,6 +360,7 @@ window.KT = window.KT || {};
           saves: statValue(p, "saves"),
           positionAbbr: (p.position && p.position.abbreviation) || "",
           events: goalMinutes[athlete.id] || [],
+          platzverweis: platzverweise[athlete.id] || null,
         };
       });
     });

@@ -115,7 +115,14 @@ window.KT = window.KT || {};
     if (match.ownGoals) {
       add(match.ownGoals + "× Eigentor", num(rules.ownGoal, 0) * match.ownGoals);
     }
-    if (match.redCards) {
+    // Gelb-Rot und glatt Rot kosten unterschiedlich viel. Welche es war,
+    // steht NICHT in der Spielerstatistik - "redCards" zaehlt beides
+    // zusammen. Die Art kommt deshalb aus der Ereignisliste (siehe
+    // espn.js). Fehlt sie (aelterer Zwischenspeicher), gilt wie bisher die
+    // glatte Rote.
+    if (match.platzverweis === "gelbrot") {
+      add("Gelb-Rote Karte", num(rules.yellowRedCard, 0));
+    } else if (match.redCards) {
       add("Rote Karte", num(rules.redCard, 0) * match.redCards);
     }
     if (player && player.position === "G" && !match.goalsConceded && match.starter) {
