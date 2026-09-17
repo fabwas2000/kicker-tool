@@ -67,6 +67,12 @@ window.KT = window.KT || {};
       var parsed = JSON.parse(raw);
       if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
       if (parsed.season !== seasonStartYear()) return null;
+      // Einen LEEREN Spielplan nicht als gueltigen Zwischenstand gelten
+      // lassen. "if (cached)" ist bei einem leeren Array wahr - ein waehrend
+      // einer ESPN-Stoerung gespeicherter leerer Plan waere sonst zwoelf
+      // Stunden lang ausgeliefert worden, obwohl ESPN laengst wieder
+      // antwortet. Lieber einmal zu viel nachfragen.
+      if (!parsed.matchdays || !parsed.matchdays.length) return null;
       return parsed.matchdays;
     } catch (err) {
       return null;
@@ -108,6 +114,11 @@ window.KT = window.KT || {};
       });
 
       var matchdays = buildFromEvents(events);
+      // Ein leeres Ergebnis gar nicht erst merken: Es bedeutet nicht "es gibt
+      // keine Spiele", sondern "gerade ging nichts". Beim naechsten Aufruf
+      // soll es erneut versucht werden.
+      if (!matchdays.length) return matchdays;
+
       memoryCache = matchdays;
       KT.config.safeSet(
         CACHE_KEY,

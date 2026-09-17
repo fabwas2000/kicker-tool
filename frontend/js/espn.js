@@ -37,22 +37,19 @@ window.KT = window.KT || {};
     var to = new Date(now);
     to.setDate(to.getDate() + 60);
 
-    var url = KT.config.ESPN_BASE + "/scoreboard?dates=" + toYYYYMMDD(from) + "-" + toYYYYMMDD(to);
-    return getJson(url).then(function (data) {
-      var events = (data && data.events) || [];
+    // Ueber fetchScoreboard, damit die Zerlegung in Monate an einer Stelle
+    // liegt - ESPN beantwortet Zeitraeume nicht mehr.
+    return fetchScoreboard(toYYYYMMDD(from), toYYYYMMDD(to)).then(function (events) {
       var teams = new Map();
 
       events.forEach(function (e) {
-        var competition = e.competitions && e.competitions[0];
-        var competitors = (competition && competition.competitors) || [];
-        competitors.forEach(function (c) {
-          var t = c.team;
-          if (t && t.id && !teams.has(t.id)) {
-            teams.set(t.id, {
-              id: t.id,
-              name: t.displayName,
-              abbreviation: t.abbreviation,
-              logo: t.logo || null,
+        (e.competitors || []).forEach(function (c) {
+          if (c.teamId && !teams.has(c.teamId)) {
+            teams.set(c.teamId, {
+              id: c.teamId,
+              name: c.teamName,
+              abbreviation: "",
+              logo: c.logo || null,
             });
           }
         });
@@ -139,8 +136,40 @@ window.KT = window.KT || {};
     return { from: toYYYYMMDD(from), to: toYYYYMMDD(to) };
   }
 
-  function fetchScoreboard(dateFrom, dateTo) {
-    var url = KT.config.ESPN_BASE + "/scoreboard?dates=" + dateFrom + "-" + dateTo;
+  /**
+   * Monatsschluessel "YYYYMM" fuer alle Monate zwischen zwei Tagen.
+   *
+   * Hintergrund: ESPN hat die Scoreboard-Schnittstelle geaendert und
+   * beantwortet Zeitraeume ("20260901-20260930") seither mit HTTP 400.
+   * Angenommen werden nur noch ein einzelner Tag ("20260912") oder ein
+   * ganzer Monat ("202609"). Ein Zeitraum wird deshalb in Monate zerlegt.
+   */
+  function monatsSchluessel(dateFrom, dateTo) {
+    function zerlegen(d) {
+      return { jahr: Number(d.slice(0, 4)), monat: Number(d.slice(4, 6)) };
+    }
+    var a = zerlegen(String(dateFrom));
+    var b = zerlegen(String(dateTo));
+    var liste = [];
+    var jahr = a.jahr;
+    var monat = a.monat;
+    // Obergrenze als Notbremse: ein kaputtes Datum soll keine Endlosschleife
+    // und keine tausend Abrufe ausloesen.
+    for (var i = 0; i < 24; i++) {
+      liste.push("" + jahr + (monat < 10 ? "0" + monat : monat));
+      if (jahr === b.jahr && monat === b.monat) break;
+      monat++;
+      if (monat > 12) {
+        monat = 1;
+        jahr++;
+      }
+    }
+    return liste;
+  }
+
+  /** Ein einzelner Scoreboard-Abruf. `dates` ist "YYYYMMDD" oder "YYYYMM". */
+  function fetchScoreboardFuer(dates) {
+    var url = KT.config.ESPN_BASE + "/scoreboard?dates=" + dates;
     return getJson(url).then(function (data) {
       var events = (data && data.events) || [];
       return events.map(function (e) {
@@ -175,6 +204,39 @@ window.KT = window.KT || {};
           competitors: competitors,
         };
       });
+    });
+  }
+
+  /**
+   * Alle Spiele zwischen zwei Tagen (jeweils einschliesslich).
+   *
+   * Holt die betroffenen Monate einzeln und schneidet danach auf den
+   * gewuenschten Zeitraum zu. Ein ausgefallener Monat kippt nicht das
+   * Ganze - lieber ein unvollstaendiger Spielplan als gar keiner.
+   */
+  function fetchScoreboard(dateFrom, dateTo) {
+    var monate = monatsSchluessel(dateFrom, dateTo);
+    return Promise.all(
+      monate.map(function (m) {
+        return fetchScoreboardFuer(m).catch(function () {
+          return [];
+        });
+      })
+    ).then(function (listen) {
+      var gesehen = {};
+      var alle = [];
+      listen.forEach(function (liste) {
+        liste.forEach(function (e) {
+          // Monate koennen sich ueberschneiden, wenn Zeitraum und Monat nicht
+          // deckungsgleich sind - doppelte Spiele hier herausnehmen.
+          if (gesehen[e.id]) return;
+          gesehen[e.id] = true;
+          var tag = String(e.date || "").slice(0, 10).replace(/-/g, "");
+          if (tag && (tag < String(dateFrom) || tag > String(dateTo))) return;
+          alle.push(e);
+        });
+      });
+      return alle;
     });
   }
 
