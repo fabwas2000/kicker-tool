@@ -56,6 +56,7 @@ window.KT.views = window.KT.views || {};
     function manualFor(playerId) {
       return bundle.manualByPlayerId.get(playerId) || {
         grade: null, no_grade: false, goals: null, assists: null, player_of_match: false,
+        red_card_override: null,
       };
     }
 
@@ -95,6 +96,45 @@ window.KT.views = window.KT.views || {};
       return "text-mute";
     }
 
+    var KARTE_LABEL = { gelbrot: "Gelb-Rot", rot: "Rot" };
+
+    /** Was die automatische Erkennung fuer diesen Spieler ergibt (oder null). */
+    function autoKarte(p) {
+      return p.platzverweis || (p.redCards ? "rot" : null);
+    }
+
+    /**
+     * Auswahlfeld fuer den Platzverweis - dieselbe Idee wie bei Toren und
+     * Vorlagen: automatisch erkannt, aber von Hand korrigierbar. Noetig,
+     * weil ESPNs eigene Typangabe fuer eine zweite Gelbe nicht verlaesslich
+     * ist (Kleindienst, Spieltag 3: die Karte stand dort als gewoehnliche
+     * "red-card", obwohl er schon Gelb hatte) - und weil ESPN einen
+     * Platzverweis auch schlicht verpassen kann.
+     */
+    function cardOverrideHtml(playerId, manualValue, p) {
+      var auto = autoKarte(p);
+      var autoLabel = auto ? KARTE_LABEL[auto] : "keine";
+      var corrected = manualValue !== null && manualValue !== undefined;
+      var wert = corrected ? manualValue : "";
+      function option(value, label) {
+        return '<option value="' + value + '"' + (wert === value ? " selected" : "") + ">" +
+          escapeHtml(label) + "</option>";
+      }
+      return [
+        '<span class="inline-flex items-center gap-1" title="Platzverweis - automatisch erkannt: ' +
+          escapeHtml(autoLabel) + '">',
+        '  <span class="text-xs">🟥</span>',
+        '  <select data-card-for="' + playerId + '"',
+        '    class="kt-input py-0.5 px-1 text-xs ' + (corrected ? "is-override" : "") + '">',
+        "    " + option("", "automatisch (" + autoLabel + ")"),
+        "    " + option("keine", "keine Karte"),
+        "    " + option("gelbrot", "Gelb-Rot"),
+        "    " + option("rot", "Rot"),
+        "  </select>",
+        "</span>",
+      ].join(" ");
+    }
+
     function countInputHtml(playerId, kind, manualValue, espnValue, icon, title) {
       var value = manualValue === null || manualValue === undefined ? espnValue || 0 : manualValue;
       var corrected = manualValue !== null && manualValue !== undefined && manualValue !== (espnValue || 0);
@@ -116,7 +156,6 @@ window.KT.views = window.KT.views || {};
       // Anpfiff bzw. Einwechslung stehen ja schon Einsatzpunkte zu Buche.
       var points = totalPointsFor(p, manual);
       var status = [];
-      if (p.redCards) status.push("🟥");
       if (p.subbedIn) status.push('<span class="text-pos" title="eingewechselt">↑</span>');
       if (p.subbedOut) status.push('<span class="text-mute" title="ausgewechselt">↓</span>');
 
@@ -143,6 +182,7 @@ window.KT.views = window.KT.views || {};
           "Tore – ESPN zählt " + (p.goals || 0)),
         "    " + countInputHtml(p.playerId, "assists", manual.assists, p.assists, "🅰️",
           "Vorlagen – ESPN zählt " + (p.assists || 0)),
+        "    " + cardOverrideHtml(p.playerId, manual.red_card_override, p),
         '    <label class="inline-flex items-center gap-1 text-xs cursor-pointer select-none">',
         '      <input type="checkbox" data-potm-for="' + p.playerId + '"' +
           (manual.player_of_match ? " checked" : "") + ' class="accent-kicker" />',
@@ -409,6 +449,7 @@ window.KT.views = window.KT.views || {};
             goals: values.goals,
             assists: values.assists,
             player_of_match: values.player_of_match,
+            red_card_override: values.red_card_override,
           });
         });
 
@@ -449,6 +490,7 @@ window.KT.views = window.KT.views || {};
       }
       var gradeField = bodyEl.querySelector('[data-grade-for="' + playerId + '"]');
       var potm = bodyEl.querySelector('[data-potm-for="' + playerId + '"]');
+      var cardField = bodyEl.querySelector('[data-card-for="' + playerId + '"]');
       var parsed = gradeField ? parseGrade(gradeField.value) : null;
       return {
         // undefined bleibt undefined (ungültig), NO_GRADE wird zu null+noGrade,
@@ -458,6 +500,8 @@ window.KT.views = window.KT.views || {};
         goals: count("goals"),
         assists: count("assists"),
         player_of_match: Boolean(potm && potm.checked),
+        // "" (automatisch) wird zu null - genau wie ein leeres Tore-Feld.
+        red_card_override: cardField && cardField.value ? cardField.value : null,
       };
     }
 
@@ -494,12 +538,17 @@ window.KT.views = window.KT.views || {};
         var abweichend = values[kind] !== null;
         field.classList.toggle("is-override", abweichend);
       });
+
+      var cardField = bodyEl.querySelector('[data-card-for="' + playerId + '"]');
+      if (cardField) cardField.classList.toggle("is-override", Boolean(values.red_card_override));
     }
 
     function onFormChange(e) {
-      var el = e.target.closest("[data-grade-for], [data-count-for], [data-potm-for]");
+      var el = e.target.closest(
+        "[data-grade-for], [data-count-for], [data-potm-for], [data-card-for]"
+      );
       if (!el) return;
-      refreshPoints(el.dataset.gradeFor || el.dataset.countFor || el.dataset.potmFor);
+      refreshPoints(el.dataset.gradeFor || el.dataset.countFor || el.dataset.potmFor || el.dataset.cardFor);
     }
 
     bodyEl.addEventListener("input", onFormChange);

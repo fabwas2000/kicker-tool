@@ -294,7 +294,7 @@ window.KT = window.KT || {};
   // wurde, kennt neue Felder nicht. Beim Nachruesten der Wappen hat genau das
   // schon einmal zu einer stillen Luecke gefuehrt. Wird das Format erweitert,
   // wird hier hochgezaehlt - dann bauen sich die Eintraege einmal neu auf.
-  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v4:";
+  var DETAIL_CACHE_PREFIX = "kicker-tool:match-detail:v5:";
 
   function statValue(player, name) {
     var stats = player.stats || [];
@@ -365,15 +365,31 @@ window.KT = window.KT || {};
     //
     // Die Spielerstatistik fuehrt nur "redCards" und zaehlt beides zusammen -
     // eine Gelb-Rote ist dort von einer glatten Roten nicht zu unterscheiden.
-    // Nur die Ereignisliste nennt die Art, und die beiden kosten
-    // unterschiedlich viele Punkte.
+    //
+    // Auf ESPNs eigene Typangabe ("yellow-red-card") ist KEIN Verlass: bei
+    // Kleindienst (BMG @ SCF, Spieltag 3) stand die zweite Karte schlicht als
+    // "red-card" da, obwohl er zuvor schon Gelb hatte - Beleg im Spiel
+    // 401884796 (13' Gelb, 52' als "red-card" getaggt). Deshalb wird
+    // stattdessen selbst mitgezaehlt: Wer beim Platzverweis schon eine Gelbe
+    // in diesem Spiel hat, sieht Gelb-Rot - unabhaengig davon, wie ESPN die
+    // zweite Karte betitelt. keyEvents stehen in Spielreihenfolge, das
+    // Mitzaehlen funktioniert deshalb einfach beim Durchlaufen.
+    var gelbeGesehen = {};
     var platzverweise = {};
     (data.keyEvents || []).forEach(function (ev) {
       var art = (ev.type && ev.type.type) || "";
-      if (!/red-card/.test(art)) return;
       var athlete = (ev.participants || [])[0] && ev.participants[0].athlete;
       if (!athlete) return;
-      platzverweise[athlete.id] = /yellow-red|second-yellow/.test(art) ? "gelbrot" : "rot";
+
+      if (/yellow-card/.test(art) && !/red/.test(art)) {
+        gelbeGesehen[athlete.id] = (gelbeGesehen[athlete.id] || 0) + 1;
+        return;
+      }
+      if (!/red-card/.test(art)) return;
+
+      var explizitGelbrot = /yellow-red|second-yellow/.test(art);
+      var schonGelb = (gelbeGesehen[athlete.id] || 0) > 0;
+      platzverweise[athlete.id] = explizitGelbrot || schonGelb ? "gelbrot" : "rot";
     });
 
     (data.keyEvents || []).forEach(function (ev) {

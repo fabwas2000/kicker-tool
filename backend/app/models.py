@@ -101,6 +101,11 @@ class PlayerGrade(Base):
     goals: Mapped[int | None] = mapped_column(nullable=True)
     assists: Mapped[int | None] = mapped_column(nullable=True)
     player_of_match: Mapped[bool] = mapped_column(default=False)
+    # Manuelle Korrektur des Platzverweises. NULL = automatisch erkannter
+    # Wert gilt (siehe espn.js: dort wird Gelb-Rot durch Mitzaehlen erkannt,
+    # weil ESPNs eigene Typangabe nicht verlaesslich ist). Werte:
+    # "keine" (Karte streichen), "gelbrot", "rot" (glatt).
+    red_card_override: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class PlayerImage(Base):

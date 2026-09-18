@@ -368,6 +368,7 @@ def upsert_grades(matchday: int, payload: schemas.GradesUpsert, db: Session = De
             and entry.goals is None
             and entry.assists is None
             and not entry.player_of_match
+            and entry.red_card_override is None
         )
 
         if is_empty:
@@ -387,6 +388,7 @@ def upsert_grades(matchday: int, payload: schemas.GradesUpsert, db: Session = De
         current.goals = entry.goals
         current.assists = entry.assists
         current.player_of_match = entry.player_of_match
+        current.red_card_override = entry.red_card_override
 
     db.commit()
     return db.scalars(

@@ -180,7 +180,15 @@ window.KT = window.KT || {};
       .getAuthStatus()
       .then(function (status) {
         passwortNoetig = Boolean(status && status.passwort_noetig);
-        oberflaecheAktualisieren();
+        // melden() statt nur oberflaecheAktualisieren(): Der Router hat beim
+        // Start SYNCHRON gerendert, mit dem Anfangswert passwortNoetig=true.
+        // Ruft jemand direkt eine geschuetzte Seite auf (Neuladen auf
+        // "#/grades", ein Lesezeichen, ein geteilter Link), stand dort bis
+        // hierher faelschlich "Anmeldung noetig" - selbst wenn gar kein
+        // Passwort verlangt wird oder eines schon gespeichert ist. melden()
+        // stoesst zusaetzlich ein Neuzeichnen der aktuellen Seite an, das
+        // holt genau das nach.
+        melden();
         if (!passwortNoetig || !KT.config.getPasswort()) return;
 
         return KT.api.checkPasswort().catch(function (err) {

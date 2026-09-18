@@ -117,13 +117,21 @@ window.KT = window.KT || {};
     }
     // Gelb-Rot und glatt Rot kosten unterschiedlich viel. Welche es war,
     // steht NICHT in der Spielerstatistik - "redCards" zaehlt beides
-    // zusammen. Die Art kommt deshalb aus der Ereignisliste (siehe
-    // espn.js). Fehlt sie (aelterer Zwischenspeicher), gilt wie bisher die
-    // glatte Rote.
-    if (match.platzverweis === "gelbrot") {
-      add("Gelb-Rote Karte", num(rules.yellowRedCard, 0));
-    } else if (match.redCards) {
-      add("Rote Karte", num(rules.redCard, 0) * match.redCards);
+    // zusammen. Die Art kommt deshalb aus der Ereignisliste, dort selbst
+    // mitgezaehlt (siehe espn.js) statt ESPNs eigener Typangabe zu
+    // vertrauen - die stimmt nicht immer (Kleindienst, Spieltag 3: die
+    // zweite Gelbe stand dort schlicht als "red-card").
+    //
+    // "red_card_override" korrigiert das von Hand, genau wie bei Toren und
+    // Vorlagen: null laesst den automatisch erkannten Wert gelten,
+    // "keine"/"gelbrot"/"rot" ueberschreiben ihn.
+    var karte = manual.red_card_override || match.platzverweis ||
+      (match.redCards ? "rot" : null);
+    var korrigiert = Boolean(manual.red_card_override);
+    if (karte === "gelbrot") {
+      add("Gelb-Rote Karte", num(rules.yellowRedCard, 0), korrigiert);
+    } else if (karte === "rot") {
+      add("Rote Karte", num(rules.redCard, 0) * (match.redCards || 1), korrigiert);
     }
     if (player && player.position === "G" && !match.goalsConceded && match.starter) {
       add("Zu Null", num(rules.cleanSheetGoalkeeper, 0));

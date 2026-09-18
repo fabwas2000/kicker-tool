@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -79,6 +80,9 @@ class GradeIn(BaseModel):
     goals: int | None = Field(default=None, ge=0, le=20)
     assists: int | None = Field(default=None, ge=0, le=20)
     player_of_match: bool = False
+    # null = automatisch erkannter Platzverweis gilt (oder gar keiner).
+    # "keine" streicht eine faelschlich erkannte Karte.
+    red_card_override: Literal["keine", "gelbrot", "rot"] | None = None
 
 
 class GradeOut(BaseModel):
@@ -90,6 +94,7 @@ class GradeOut(BaseModel):
     goals: int | None
     assists: int | None
     player_of_match: bool
+    red_card_override: str | None = None
 
 
 class GradesUpsert(BaseModel):
