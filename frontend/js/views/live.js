@@ -36,7 +36,11 @@ window.KT.views = window.KT.views || {};
     var GESAMT_KEY = "kicker-tool:punktestand-gesamt";
 
     container.innerHTML = [
-      '<section class="max-w-4xl mx-auto">',
+      // Auf dem Handy bleibt es bei max-w-4xl (unter "lg" ohnehin nie
+      // erreicht, da rutscht die Leiste einfach seitlich - das ist dort
+      // gewollt). Ab Desktop-Breite mehr Platz, damit moeglichst alle elf
+      // Spieler der Live-Leiste ohne Scrollen nebeneinander passen.
+      '<section class="max-w-4xl lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1600px] mx-auto">',
       '  <div class="flex flex-wrap items-end justify-between gap-3 mb-4 pb-3 border-b-2 border-ink">',
       "    <div>",
       '      <h1 class="font-display text-3xl font-bold uppercase tracking-tight leading-none">Punkte</h1>',
