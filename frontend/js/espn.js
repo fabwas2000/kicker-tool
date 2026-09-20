@@ -425,7 +425,11 @@ window.KT = window.KT || {};
           // die Live-Ansicht ohne Zusatzlookup weiss, ob "aktiv im Spiel"
           // ueberhaupt eine sinnvolle Aussage ist.
           matchState: event.state,
-          played: starter || subbedIn,
+          // Vor Anpfiff steht die Startelf zwar schon fest, gespielt hat aber
+          // noch niemand - "played" bleibt deshalb false, solange das Spiel
+          // "pre" ist. Sonst wuerden Wertung und "gespielt X/Y"-Zaehler schon
+          // vor dem Anstoss Startelf-Spieler als eingesetzt zaehlen.
+          played: event.state !== "pre" && (starter || subbedIn),
           starter: starter,
           subbedIn: subbedIn,
           subbedOut: Boolean(p.subbedOut),
@@ -463,13 +467,26 @@ window.KT = window.KT || {};
     }
   }
 
+  // ESPN veroeffentlicht die Startaufstellung ueber `summary.rosters[].roster`
+  // schon vor Anpfiff - beobachtet ca. 1h vorher (roster ist bis dahin leer,
+  // "starter" aber schon gesetzt sobald es gefuellt ist). Der Abruf lohnt sich
+  // deshalb ab diesem Fenster vor Anpfiff, nicht erst nach ihm - mit etwas
+  // Puffer ueber die beobachtete Stunde hinaus, falls es mal frueher kommt.
+  var LINEUP_ANNOUNCE_WINDOW_MS = 90 * 60 * 1000;
+
+  function lineupKoennteFeststehen(event) {
+    var anpfiff = Date.parse(event.date);
+    return !isNaN(anpfiff) && Date.now() >= anpfiff - LINEUP_ANNOUNCE_WINDOW_MS;
+  }
+
   /**
    * Spieldetails fuer EIN Spiel. Beendete Spiele kommen aus dem Cache,
    * laufende werden immer frisch geholt. Noch nicht angepfiffene Spiele
-   * brauchen gar keinen Request.
+   * brauchen keinen Request - ausser kurz vor Anpfiff, wenn ESPN schon die
+   * Startelf verraet (siehe `lineupKoennteFeststehen`).
    */
   function fetchMatchDetail(event) {
-    if (event.state === "pre") {
+    if (event.state === "pre" && !lineupKoennteFeststehen(event)) {
       return Promise.resolve({
         eventId: event.id,
         shortName: event.shortName,

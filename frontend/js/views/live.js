@@ -119,6 +119,17 @@ window.KT.views = window.KT.views || {};
       // auf dem Feld wie ein Strich und waren nicht zu deuten.
       if (match && match.subbedIn) badges.push('<span class="text-pos" title="eingewechselt">↑</span>');
       if (match && match.subbedOut) badges.push('<span class="text-mute" title="ausgewechselt">↓</span>');
+      // Vor Anpfiff ist die Startelf oft schon bekannt (ESPN, ~1h vorher) -
+      // das ist dann die einzige Auskunft, die es gibt, deshalb eigene Icons
+      // statt eines der Ereignis-Symbole oben. Verschwindet von selbst, sobald
+      // matchState auf "in"/"post" wechselt.
+      if (match && match.matchState === "pre") {
+        badges.push(
+          match.starter
+            ? '<span class="text-pos font-bold" title="steht in der Startelf">S11</span>'
+            : '<span class="text-mute" title="nicht in der Startelf (Bank)">🪑</span>'
+        );
+      }
       return badges;
     }
 
@@ -192,7 +203,12 @@ window.KT.views = window.KT.views || {};
         // Der Verein dieses Spielers hat an diesem Spieltag gar keine Partie.
         statusLine = '<span class="text-mute">kein Spiel</span>';
       } else if (!partieBegonnen) {
-        statusLine = '<span class="text-mute">ausstehend</span>';
+        // ESPN veroeffentlicht die Startelf oft schon ~1h vor Anpfiff (siehe
+        // espn.js#lineupKoennteFeststehen) - dann steht das hier, statt erst
+        // beim Anpfiff selbst.
+        statusLine = match && match.starter
+          ? '<span class="text-pos font-semibold">Startelf</span>'
+          : '<span class="text-mute">ausstehend</span>';
       } else if (!match) {
         // Partie laeuft oder ist vorbei, der Spieler steht aber nicht in der
         // Aufstellung - dann war er tatsaechlich nicht nominiert.
@@ -301,10 +317,13 @@ window.KT.views = window.KT.views || {};
       var badges = ereignisBadges(entry);
       var dim, lage;
       if (x.zustand === "ausstehend") {
-        // Vor Anpfiff ist noch nichts passiert - alle Kacheln bleiben
-        // gleichermassen abgedunkelt, das Genaue sagt der Tooltip.
-        dim = true;
-        lage = "ausstehend";
+        // Vor Anpfiff ist noch nichts passiert - Kacheln bleiben abgedunkelt.
+        // Ausnahme: Steht die Startelf schon fest (ESPN verraet sie oft ~1h
+        // vorher), hebt sich der Spieler ab - das ist die einzige Auskunft,
+        // die es vor Anpfiff ueberhaupt schon gibt.
+        var stehtInStartelf = Boolean(match && match.starter);
+        dim = !stehtInStartelf;
+        lage = stehtInStartelf ? "steht in der Startelf" : "ausstehend";
       } else if (x.zustand === "aktiv") {
         dim = !(entry.played && !match.subbedOut);
         lage = !entry.played
@@ -973,9 +992,11 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Nachladen lohnt sich, wenn gerade gespielt wird - aber auch schon kurz
-     * vor Anpfiff. Sonst bliebe die Seite tot, wenn man sie vorher geoeffnet
-     * hat, und wuerde den Anpfiff nie mitbekommen.
+     * Nachladen lohnt sich, wenn gerade gespielt wird - aber auch schon eine
+     * Weile vor Anpfiff. Sonst bliebe die Seite tot, wenn man sie vorher
+     * geoeffnet hat, und wuerde weder den Anpfiff noch die Startelf
+     * mitbekommen, die ESPN oft schon ~1h vorher veroeffentlicht (siehe
+     * espn.js#LINEUP_ANNOUNCE_WINDOW_MS - dasselbe Fenster gilt hier).
      */
     function shouldPoll(events) {
       var now = Date.now();
@@ -983,7 +1004,7 @@ window.KT.views = window.KT.views || {};
         if (e.state === "in") return true;
         if (e.state !== "pre") return false;
         var anpfiff = new Date(e.date).getTime();
-        return now >= anpfiff - 15 * 60 * 1000 && now <= anpfiff + 4 * 60 * 60 * 1000;
+        return now >= anpfiff - 90 * 60 * 1000 && now <= anpfiff + 4 * 60 * 60 * 1000;
       });
     }
 
