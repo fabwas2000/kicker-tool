@@ -4,6 +4,18 @@ window.KT.views = window.KT.views || {};
 (function (KT) {
   "use strict";
 
+  // Bank-Symbol fuer Spieler, deren Aufstellung schon feststeht, die aber
+  // nicht in der Startelf stehen. "currentColor", damit es die Textfarbe der
+  // umgebenden <span> uebernimmt statt einer festen Farbe.
+  var BANK_ICON_SVG =
+    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px">' +
+    '<rect x="3" y="4" width="18" height="6" rx="1.5"/>' +
+    '<rect x="3" y="11" width="18" height="4" rx="1"/>' +
+    '<line x1="5" y1="15" x2="5" y2="20"/>' +
+    '<line x1="19" y1="15" x2="19" y2="20"/>' +
+    "</svg>";
+
   KT.views.live = function (container) {
     var escapeHtml = KT.ui.escapeHtml;
     var pollTimer = null;
@@ -127,7 +139,7 @@ window.KT.views = window.KT.views || {};
         badges.push(
           match.starter
             ? '<span class="text-pos font-bold" title="steht in der Startelf">S11</span>'
-            : '<span class="text-mute" title="nicht in der Startelf (Bank)">🪑</span>'
+            : '<span class="text-mute inline-flex" title="nicht in der Startelf (Bank)">' + BANK_ICON_SVG + "</span>"
         );
       }
       return badges;

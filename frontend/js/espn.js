@@ -304,6 +304,13 @@ window.KT = window.KT || {};
     return 0;
   }
 
+  /** subbedIn/subbedOut: mal Bool, mal "{didSub: bool}" - siehe distillSummary. */
+  function subFlag(v) {
+    if (typeof v === "boolean") return v;
+    if (v && typeof v === "object") return Boolean(v.didSub);
+    return false;
+  }
+
   /**
    * Destilliert aus dem (grossen) Summary-Response nur das, was die Wertung
    * braucht. Das Ergebnis ist klein genug, um es pro Spiel in localStorage zu
@@ -414,7 +421,12 @@ window.KT = window.KT || {};
       (teamRoster.roster || []).forEach(function (p) {
         var athlete = p.athlete || {};
         var starter = Boolean(p.starter);
-        var subbedIn = Boolean(p.subbedIn);
+        // Vor Anpfiff liefert ESPN subbedIn/subbedOut als Objekt
+        // ("{didSub: false}"), sobald das Spiel laeuft oder vorbei ist als
+        // simplen Bool. Boolean(...) auf das Objekt waere IMMER true (jedes
+        // Objekt ist truthy) - das liess vor Anpfiff jeden Spieler faelschlich
+        // als "eingewechselt" erscheinen.
+        var subbedIn = subFlag(p.subbedIn);
         players[athlete.id] = {
           playerId: athlete.id,
           playerName: athlete.displayName,
@@ -432,7 +444,7 @@ window.KT = window.KT || {};
           played: event.state !== "pre" && (starter || subbedIn),
           starter: starter,
           subbedIn: subbedIn,
-          subbedOut: Boolean(p.subbedOut),
+          subbedOut: subFlag(p.subbedOut),
           goals: statValue(p, "totalGoals"),
           assists: statValue(p, "goalAssists"),
           ownGoals: statValue(p, "ownGoals"),
