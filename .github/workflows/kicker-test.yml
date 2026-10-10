@@ -1,0 +1,82 @@
+# Test: Kommt ein GitHub-Server ueberhaupt an kicker.de vorbei?
+#
+# Lokal klappt das Auslesen nur mit echtem Chrome (curl bekommt 403, siehe
+# backend/scripts/fotos/import_kicker_positionen.py). Bevor der Import der
+# Konkurrenz-Aufstellungen hierher wandert, pruefen wir, ob kicker Abrufe aus
+# einem Rechenzentrum zusaetzlich sperrt.
+#
+# Laeuft nur per Hand (Actions-Tab -> "kicker-Erreichbarkeit testen" -> Run
+# workflow), beruehrt weder das Frontend noch das Backend.
+name: kicker-Erreichbarkeit testen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vergleich - einfacher Abruf ohne Browser
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://www.kicker.de/bundesliga/vereine || true)
+          echo "curl -> HTTP $code"
+          echo "| curl ohne Browser | HTTP $code |" >> seiten.md
+
+      - name: Seiten mit echtem Chrome laden
+        run: |
+          major=$(google-chrome --version | grep -oE '[0-9]+' | head -1)
+          ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36"
+          profil=$(mktemp -d)
+          mkdir -p html
+
+          lade() {  # lade <datei> <url>
+            google-chrome --headless=new --disable-gpu --no-sandbox \
+              --virtual-time-budget=20000 --user-agent="$ua" \
+              --user-data-dir="$profil" --dump-dom "$2" > "html/$1" 2>/dev/null || true
+            titel=$(grep -oE '<title>[^<]*' "html/$1" | head -1 | sed 's/<title>//')
+            echo "| $2 | $(wc -c < "html/$1") Bytes, Titel: ${titel:-(keiner)} |" >> seiten.md
+          }
+
+          lade vereine.html https://www.kicker.de/bundesliga/vereine
+          vereine=$(grep -oE 'href="/[a-z0-9-]+/kader/' html/vereine.html | sort -u | wc -l)
+
+          jahr=$(date +%Y); monat=$(date +%-m)
+          [ "$monat" -lt 7 ] && jahr=$((jahr - 1))
+          saison="$jahr-$(( (jahr + 1) % 100 ))"
+          verein=$(grep -oE 'href="/[a-z0-9-]+/kader/' html/vereine.html | head -1 | cut -d/ -f2)
+          spieler=0
+          if [ -n "$verein" ]; then
+            lade kader.html "https://www.kicker.de/$verein/kader/bundesliga/$saison"
+            spieler=$(grep -oE '/spieler/[^"]*"><strong>' html/kader.html | wc -l)
+          fi
+
+          lade managerspiel.html https://www.kicker.de/managerspiel
+
+          {
+            echo "## kicker vom GitHub-Server aus"
+            echo
+            echo "| Abruf | Ergebnis |"
+            echo "|---|---|"
+            cat seiten.md
+            echo
+            echo "- Vereine gefunden: **$vereine** (erwartet: 18)"
+            echo "- Spieler im Kader von ${verein:-?}: **$spieler**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$vereine" -ge 18 ] && [ "$spieler" -ge 15 ]; then
+            echo "kicker laesst den GitHub-Server durch." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "kicker blockt oder liefert unvollstaendige Seiten." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Geladene Seiten zum Nachsehen aufheben
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kicker-seiten
+          path: html/
+          retention-days: 3
