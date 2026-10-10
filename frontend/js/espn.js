@@ -459,6 +459,14 @@ window.KT = window.KT || {};
       });
     });
 
+    // Fuer welche Mannschaften die Aufstellung schon veroeffentlicht ist. Vor
+    // Anpfiff kommen die beiden Kader nicht zwingend gleichzeitig - und nur
+    // wenn die eigene Mannschaft schon steht, heisst "nicht in players"
+    // wirklich "nicht im Spieltagskader" und nicht bloss "noch unbekannt".
+    var lineupTeamIds = (data.rosters || [])
+      .filter(function (r) { return (r.roster || []).length > 0; })
+      .map(function (r) { return String((r.team || {}).id); });
+
     return {
       eventId: event.id,
       shortName: event.shortName,
@@ -466,6 +474,7 @@ window.KT = window.KT || {};
       statusDetail: event.statusDetail,
       competitors: event.competitors,
       players: players,
+      lineupTeamIds: lineupTeamIds,
       ereignisse: ereignisseAusSummary(data),
     };
   }

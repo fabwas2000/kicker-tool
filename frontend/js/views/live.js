@@ -109,6 +109,20 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
+     * Vor Anpfiff: Die Aufstellung seiner Mannschaft ist schon raus, er steht
+     * aber weder in der Startelf noch auf der Bank - also gar nicht im
+     * Spieltagskader. Ist die Aufstellung noch nicht raus, weiss man das
+     * schlicht noch nicht, dann false.
+     */
+    function nichtImKader(entry, fx) {
+      if (entry.match || !fx || !fx.event || fx.event.state !== "pre" || !currentBundle) return false;
+      var detail = (currentBundle.details || []).filter(function (d) {
+        return d.eventId === fx.event.id;
+      })[0];
+      return Boolean(detail && (detail.lineupTeamIds || []).indexOf(String(entry.teamId)) !== -1);
+    }
+
+    /**
      * Ereignis-Symbole eines Spielers (Tore, Vorlagen, Karten, Wechsel).
      * Gemeinsam genutzt von Spielfeld und Live-Zeile, damit beide dieselbe
      * Sprache sprechen.
@@ -141,6 +155,8 @@ window.KT.views = window.KT.views || {};
             ? '<span class="text-pos font-bold" title="steht in der Startelf">S11</span>'
             : '<span class="text-mute inline-flex" title="nicht in der Startelf (Bank)">' + BANK_ICON_SVG + "</span>"
         );
+      } else if (nichtImKader(entry, fixtureForPlayer(entry))) {
+        badges.push('<span class="text-kicker font-bold" title="nicht im Spieltagskader">✕</span>');
       }
       return badges;
     }
@@ -220,6 +236,10 @@ window.KT.views = window.KT.views || {};
         // beim Anpfiff selbst.
         statusLine = match && match.starter
           ? '<span class="text-pos font-semibold">Startelf</span>'
+          : match
+          ? '<span class="text-mute">Bank</span>'
+          : nichtImKader(entry, fx)
+          ? '<span class="text-mute">nicht im Kader</span>'
           : '<span class="text-mute">ausstehend</span>';
       } else if (!match) {
         // Partie laeuft oder ist vorbei, der Spieler steht aber nicht in der
@@ -310,13 +330,20 @@ window.KT.views = window.KT.views || {};
 
       // Noch nicht angepfiffen, aber die Aufstellung ist schon raus (ESPN
       // verraet sie oft ~1h vorher, siehe espn.js#lineupKoennteFeststehen):
-      // Nur dann gibt es einen match-Eintrag. Diese Spieler bleiben sichtbar,
-      // Startelf vor Bank, danach nach Anstoss.
+      // Nur dann gibt es einen match-Eintrag - oder eben gerade keinen, obwohl
+      // die Mannschaft schon steht (nicht im Kader). Diese Spieler bleiben
+      // sichtbar: Startelf vor Bank vor nicht im Kader, danach nach Anstoss.
+      var kaderRang = function (x) {
+        if (!x.entry.match) return 2;
+        return x.entry.match.starter ? 0 : 1;
+      };
       var aufgestellt = mitZustand
-        .filter(function (x) { return x.zustand === "ausstehend" && x.entry.match; })
+        .filter(function (x) {
+          return x.zustand === "ausstehend" && (x.entry.match || nichtImKader(x.entry, x.fx));
+        })
         .sort(function (a, b) {
-          var as = a.entry.match.starter ? 0 : 1;
-          var bs = b.entry.match.starter ? 0 : 1;
+          var as = kaderRang(a);
+          var bs = kaderRang(b);
           var ad = a.fx.event.date ? new Date(a.fx.event.date).getTime() : Infinity;
           var bd = b.fx.event.date ? new Date(b.fx.event.date).getTime() : Infinity;
           return as - bs || ad - bd;
@@ -333,9 +360,10 @@ window.KT.views = window.KT.views || {};
       var darstellung, lage;
       if (x.zustand === "ausstehend") {
         // Vor Anpfiff, Aufstellung bekannt: Startelf in voller Farbe, Bank
-        // abgedunkelt. Die S11-/Bank-Markierung kommt aus ereignisBadges.
-        darstellung = match.starter ? "" : "opacity-60";
-        lage = match.starter ? "steht in der Startelf" : "auf der Bank";
+        // abgedunkelt, nicht im Kader noch blasser. Die Markierung (S11 /
+        // Bank / ✕) kommt aus ereignisBadges.
+        darstellung = !match ? "opacity-40" : match.starter ? "" : "opacity-60";
+        lage = !match ? "nicht im Kader" : match.starter ? "steht in der Startelf" : "auf der Bank";
       } else if (x.zustand === "aktiv") {
         // Laeuft gerade: in voller Farbe, nur wer nicht (mehr) auf dem Platz
         // steht, wird abgedunkelt.
