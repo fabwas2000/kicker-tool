@@ -277,11 +277,10 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Die komplette Aufstellung dieses Konkurrenten, in drei Zeitzustaende
-     * einsortiert: aktiv (laeuft gerade) - gespielt (abgepfiffen oder ohne
-     * Partie) - ausstehend (noch nicht angepfiffen). Bewusst ALLE elf, nicht
-     * nur die live Spielenden: die Uebersicht soll die gesamte Aufstellung auf
-     * einen Blick zeigen, nicht nur den aktuellen Ausschnitt.
+     * Die Aufstellung dieses Konkurrenten, in zwei Zeitzustaende einsortiert:
+     * aktiv (laeuft gerade) - gespielt (abgepfiffen oder ohne Partie). Wer
+     * noch nicht angepfiffen wurde, taucht in der Uebersicht bewusst NICHT
+     * auf - die Zeile zeigt nur, was schon passiert ist oder gerade passiert.
      */
     function gruppierteSpieler(c) {
       var rang = function (s) {
@@ -309,17 +308,7 @@ window.KT.views = window.KT.views || {};
           return ap - bp || b.entry.points - a.entry.points;
         });
 
-      // Noch nicht angepfiffen: Punkte sagen hier nichts aus, also nach
-      // Anstoss sortiert - wer als naechstes dran ist, steht vorne.
-      var ausstehend = mitZustand
-        .filter(function (x) { return x.zustand === "ausstehend"; })
-        .sort(function (a, b) {
-          var ad = a.fx && a.fx.event && a.fx.event.date ? new Date(a.fx.event.date).getTime() : Infinity;
-          var bd = b.fx && b.fx.event && b.fx.event.date ? new Date(b.fx.event.date).getTime() : Infinity;
-          return ad - bd;
-        });
-
-      return { aktiv: aktiv, gespielt: gespielt, ausstehend: ausstehend };
+      return { aktiv: aktiv, gespielt: gespielt };
     }
 
     /** Eine Kachel in der Live-Zeile: Foto, Name, Ereignisse, Punktestand. */
@@ -327,26 +316,21 @@ window.KT.views = window.KT.views || {};
       var entry = x.entry;
       var match = entry.match;
       var badges = ereignisBadges(entry);
-      var dim, lage;
-      if (x.zustand === "ausstehend") {
-        // Vor Anpfiff ist noch nichts passiert - Kacheln bleiben abgedunkelt.
-        // Ausnahme: Steht die Startelf schon fest (ESPN verraet sie oft ~1h
-        // vorher), hebt sich der Spieler ab - das ist die einzige Auskunft,
-        // die es vor Anpfiff ueberhaupt schon gibt.
-        var stehtInStartelf = Boolean(match && match.starter);
-        dim = !stehtInStartelf;
-        lage = stehtInStartelf ? "steht in der Startelf" : "ausstehend";
-      } else if (x.zustand === "aktiv") {
-        dim = !(entry.played && !match.subbedOut);
+      var darstellung, lage;
+      if (x.zustand === "aktiv") {
+        // Laeuft gerade: in voller Farbe, nur wer nicht (mehr) auf dem Platz
+        // steht, wird abgedunkelt.
+        darstellung = entry.played && !match.subbedOut ? "" : "opacity-60";
         lage = !entry.played
           ? "auf der Bank"
           : match.subbedOut
           ? "ausgewechselt"
           : "live im Spiel";
       } else {
-        // Abgepfiffen: nur wer GAR NICHT eingesetzt wurde, wird abgedunkelt -
-        // wer ausgewechselt wurde, hat schliesslich gespielt.
-        dim = !entry.played;
+        // Abgepfiffen: insgesamt etwas ausgegraut, damit die laufenden Spieler
+        // hervorstechen. Wer GAR NICHT eingesetzt wurde, noch ein Stueck
+        // blasser - wer ausgewechselt wurde, hat schliesslich gespielt.
+        darstellung = "grayscale-[60%] " + (entry.played ? "opacity-70" : "opacity-40");
         lage = !x.fx
           ? "kein Spiel"
           : !match
@@ -363,7 +347,7 @@ window.KT.views = window.KT.views || {};
           ' title="' + escapeHtml(entry.playerName) + " – " + lage +
           ' – für die Punkte-Aufschlüsselung antippen"',
           ' class="shrink-0 w-[46px] flex flex-col items-center gap-0.5 kt-focus kt-hover rounded-sm ' +
-          (dim ? "opacity-60" : "") + '">',
+          darstellung + '">',
         '  <span class="relative block' + blitzKlasse(c.competitorId, entry.slot) + '">',
         "    " + KT.images.avatarHtml(entry.playerId, entry.playerName,
           "w-[40px] aspect-[4/5] object-cover object-top rounded-sm", false),
@@ -385,10 +369,10 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Eine der drei Zeitzonen als eigener, getoenter Block - die Toenung ist
+     * Eine der beiden Zeitzonen als eigener, getoenter Block - die Toenung ist
      * die einzige Kennzeichnung der Gruppe, keine Beschriftung noetig: rot
-     * angehaucht laeuft gerade, neutral abgepfiffen, in den Hintergrund
-     * abgesetzt (dazu jede Kachel selbst abgedunkelt) noch nicht angepfiffen.
+     * angehaucht laeuft gerade, neutral (dazu jede Kachel ausgegraut)
+     * abgepfiffen.
      */
     function renderSpielerGruppe(c, eintraege, bgKlasse) {
       if (!eintraege.length) return "";
@@ -404,9 +388,9 @@ window.KT.views = window.KT.views || {};
       var teile = [
         renderSpielerGruppe(c, gruppen.aktiv, "bg-kicker-soft"),
         renderSpielerGruppe(c, gruppen.gespielt, "bg-panel-alt"),
-        renderSpielerGruppe(c, gruppen.ausstehend, "bg-wash"),
       ].filter(Boolean);
-      // Keine Aufstellung oder gar keine Partien an diesem Spieltag - dann
+      // Keine Aufstellung, noch nichts angepfiffen oder gar keine Partien an
+      // diesem Spieltag - dann
       // bleibt ein LEERER Platzhalter stehen. Er schiebt die Punktzahl an den
       // rechten Rand; ohne ihn rutschte sie in solchen Zeilen bis an den Namen
       // heran, und die Spalte war von Zeile zu Zeile woanders.
