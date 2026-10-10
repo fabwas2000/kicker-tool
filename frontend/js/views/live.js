@@ -390,9 +390,9 @@ window.KT.views = window.KT.views || {};
     /**
      * Eine der Zeitzonen als eigener, getoenter Block - die Toenung ist die
      * einzige Kennzeichnung der Gruppe, keine Beschriftung noetig: rot
-     * angehaucht laeuft gerade, neutral (dazu jede Kachel ausgegraut)
-     * abgepfiffen, in den Hintergrund abgesetzt noch nicht angepfiffen, aber
-     * schon aufgestellt.
+     * angehaucht laeuft gerade, in den Hintergrund abgesetzt noch nicht
+     * angepfiffen, aber schon aufgestellt, neutral (dazu jede Kachel
+     * ausgegraut) abgepfiffen.
      */
     function renderSpielerGruppe(c, eintraege, bgKlasse) {
       if (!eintraege.length) return "";
@@ -407,8 +407,8 @@ window.KT.views = window.KT.views || {};
       var gruppen = gruppierteSpieler(c);
       var teile = [
         renderSpielerGruppe(c, gruppen.aktiv, "bg-kicker-soft"),
-        renderSpielerGruppe(c, gruppen.gespielt, "bg-panel-alt"),
         renderSpielerGruppe(c, gruppen.aufgestellt, "bg-wash"),
+        renderSpielerGruppe(c, gruppen.gespielt, "bg-panel-alt"),
       ].filter(Boolean);
       // Keine Aufstellung, noch nichts angepfiffen (und keine Startelf raus)
       // oder gar keine Partien an diesem Spieltag - dann bleibt ein LEERER
