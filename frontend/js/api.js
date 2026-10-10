@@ -113,6 +113,11 @@ window.KT = window.KT || {};
       });
     },
 
+    /** Offizielle Noten/Tore/Vorlagen eines Spieltags aus dem kicker-Managerspiel. */
+    getKickerSpieltag: function (matchday) {
+      return request("/api/kicker/spieltag/" + matchday);
+    },
+
     listKickerPositions: function () {
       return request("/api/kicker-positions");
     },

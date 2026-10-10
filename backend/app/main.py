@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import models, positions, schemas, scoring_defaults
+from . import kicker_libero, models, positions, schemas, scoring_defaults
 from .database import Base, engine, get_db
 
 # Reicht dick fuer ein freigestelltes Portrait; verhindert, dass versehentlich
@@ -394,6 +394,20 @@ def upsert_grades(matchday: int, payload: schemas.GradesUpsert, db: Session = De
     return db.scalars(
         select(models.PlayerGrade).where(models.PlayerGrade.matchday == matchday)
     ).all()
+
+
+@app.get("/api/kicker/spieltag/{matchday}")
+def kicker_spieltag(matchday: int):
+    """Noten, Tore, Vorlagen und Punkte eines Spieltags, so wie das kicker-
+    Managerspiel sie wertet. Das Backend reicht nur durch und bereitet auf;
+    die Zuordnung zu ESPN-Spielern und das Speichern macht das Frontend,
+    weil nur dort die ESPN-Spieldaten vorliegen."""
+    if not 1 <= matchday <= 34:
+        raise HTTPException(status_code=400, detail="Spieltag muss zwischen 1 und 34 liegen")
+    try:
+        return kicker_libero.spieltag(matchday)
+    except kicker_libero.KickerFehler as err:
+        raise HTTPException(status_code=502, detail=str(err))
 
 
 # ---------------------------------------------------------------------------

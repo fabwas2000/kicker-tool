@@ -19,8 +19,12 @@ window.KT.views = window.KT.views || {};
       '        <label class="kt-eyebrow block mb-1">Spieltag</label>',
       '        <select id="g-md" class="kt-input font-semibold py-[0.42rem]"></select>',
       "      </div>",
+      '      <button id="g-kicker" class="kt-btn kt-btn-secondary" title="Noten, Tore und Vorlagen aus dem kicker-Managerspiel übernehmen">',
+      "        kicker-Noten laden",
+      "      </button>",
       "    </div>",
       "  </div>",
+      '  <div id="g-kicker-bericht"></div>',
       '  <div id="g-body"><p class="text-mute">Lade…</p></div>',
       "</section>",
     ].join("\n");
@@ -28,6 +32,8 @@ window.KT.views = window.KT.views || {};
     var mdSelect = container.querySelector("#g-md");
     var statusEl = container.querySelector("#g-status");
     var bodyEl = container.querySelector("#g-body");
+    var kickerBtn = container.querySelector("#g-kicker");
+    var berichtEl = container.querySelector("#g-kicker-bericht");
 
     var bundle = null;
     var openKey = null; // "<eventId>:<teamId>"
@@ -572,7 +578,93 @@ window.KT.views = window.KT.views || {};
     }
 
     mdSelect.addEventListener("change", function () {
+      berichtEl.innerHTML = "";
       load(Number(mdSelect.value));
+    });
+
+    function berichtHtml(b) {
+      function liste(titel, zeilen, farbe) {
+        if (!zeilen.length) return "";
+        return '<div class="mt-2"><div class="kt-eyebrow ' + (farbe || "") + '">' + escapeHtml(titel) +
+          '</div><ul class="mt-0.5">' + zeilen.map(function (z) {
+            return "<li>" + escapeHtml(z) + "</li>";
+          }).join("") + "</ul></div>";
+      }
+
+      var kopf = b.bewerteteSpiele
+        ? "Noten für " + b.bewerteteSpiele + " von " + b.spiele.length + " Spielen da · " +
+          b.uebernommen + " Spieler übernommen"
+        : b.spiele.length
+        ? "kicker hat für diesen Spieltag noch keine Noten – nichts übernommen."
+        : "kicker kennt diesen Spieltag (noch) nicht – nichts übernommen.";
+
+      var pruefung = "";
+      if (b.punkteGeprueft) {
+        pruefung = b.punkteAbweichungen.length
+          ? liste("Punkte weichen von kicker ab", b.punkteAbweichungen, "text-kicker")
+          : '<p class="mt-2 text-pos font-semibold">✓ Punkte stimmen bei allen ' + b.punkteGeprueft +
+            " aufgestellten Spielern mit kicker überein.</p>";
+      }
+
+      return [
+        '<div class="kt-panel bg-panel p-3 mb-4 text-sm">',
+        '  <div class="flex items-start justify-between gap-2">',
+        '    <div><div class="kt-eyebrow">kicker · Spieltag ' + b.matchday + "</div>",
+        '      <p class="font-semibold text-ink">' + escapeHtml(kopf) + "</p></div>",
+        '    <button data-bericht-zu class="kt-btn kt-btn-secondary px-2 py-0.5" title="Schließen">✕</button>',
+        "  </div>",
+        '  <ul class="mt-2 grid sm:grid-cols-2 gap-x-4">',
+        b.spiele.map(function (s) {
+          return '<li class="flex gap-1.5"><span class="' + (s.bewertet ? "text-pos" : "text-mute") + '">' +
+            (s.bewertet ? "✓" : "○") + "</span><span>" + escapeHtml(s.paarung) +
+            (s.ergebnis ? " " + escapeHtml(s.ergebnis) : "") +
+            ' <span class="text-mute">· ' + escapeHtml(s.text) + "</span></span></li>";
+        }).join(""),
+        "  </ul>",
+        pruefung,
+        liste("Nicht zugeordnet – bitte von Hand eintragen", b.offen, "text-kicker"),
+        liste("Von ESPN abweichend, nach kicker korrigiert", b.abweichungen),
+        "</div>",
+      ].join("\n");
+    }
+
+    berichtEl.addEventListener("click", function (e) {
+      if (e.target.closest("[data-bericht-zu]")) berichtEl.innerHTML = "";
+    });
+
+    kickerBtn.addEventListener("click", function () {
+      if (!bundle) return;
+      var matchday = bundle.matchday;
+      kickerBtn.disabled = true;
+      kickerBtn.textContent = "Lade von kicker…";
+      KT.api
+        .getKickerSpieltag(matchday)
+        .then(function (kicker) {
+          var ergebnis = KT.kickerNoten.aufbereiten(kicker, bundle);
+          if (!ergebnis.eintraege.length) return ergebnis.bericht;
+          return KT.api.saveGrades(matchday, ergebnis.eintraege).then(function (saved) {
+            bundle.manualByPlayerId = new Map();
+            saved.forEach(function (g) {
+              bundle.manualByPlayerId.set(g.espn_player_id, g);
+            });
+            return KT.kickerNoten.punktePruefen(ergebnis.bericht, bundle, function (id) {
+              return totalPointsFor(bundle.matchByPlayerId.get(id), manualFor(id));
+            });
+          });
+        })
+        .then(function (bericht) {
+          // Inzwischen anderer Spieltag gewaehlt? Dann passt der Bericht nicht mehr.
+          if (!bundle || bundle.matchday !== matchday) return;
+          berichtEl.innerHTML = berichtHtml(bericht);
+          render();
+        })
+        .catch(function (err) {
+          KT.ui.showError("kicker-Noten nicht geladen: " + KT.ui.backendErrorText(err));
+        })
+        .then(function () {
+          kickerBtn.disabled = false;
+          kickerBtn.textContent = "kicker-Noten laden";
+        });
     });
 
     return KT.matchdays
