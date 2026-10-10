@@ -308,7 +308,21 @@ window.KT.views = window.KT.views || {};
           return ap - bp || b.entry.points - a.entry.points;
         });
 
-      return { aktiv: aktiv, gespielt: gespielt };
+      // Noch nicht angepfiffen, aber die Aufstellung ist schon raus (ESPN
+      // verraet sie oft ~1h vorher, siehe espn.js#lineupKoennteFeststehen):
+      // Nur dann gibt es einen match-Eintrag. Diese Spieler bleiben sichtbar,
+      // Startelf vor Bank, danach nach Anstoss.
+      var aufgestellt = mitZustand
+        .filter(function (x) { return x.zustand === "ausstehend" && x.entry.match; })
+        .sort(function (a, b) {
+          var as = a.entry.match.starter ? 0 : 1;
+          var bs = b.entry.match.starter ? 0 : 1;
+          var ad = a.fx.event.date ? new Date(a.fx.event.date).getTime() : Infinity;
+          var bd = b.fx.event.date ? new Date(b.fx.event.date).getTime() : Infinity;
+          return as - bs || ad - bd;
+        });
+
+      return { aktiv: aktiv, gespielt: gespielt, aufgestellt: aufgestellt };
     }
 
     /** Eine Kachel in der Live-Zeile: Foto, Name, Ereignisse, Punktestand. */
@@ -317,7 +331,12 @@ window.KT.views = window.KT.views || {};
       var match = entry.match;
       var badges = ereignisBadges(entry);
       var darstellung, lage;
-      if (x.zustand === "aktiv") {
+      if (x.zustand === "ausstehend") {
+        // Vor Anpfiff, Aufstellung bekannt: Startelf in voller Farbe, Bank
+        // abgedunkelt. Die S11-/Bank-Markierung kommt aus ereignisBadges.
+        darstellung = match.starter ? "" : "opacity-60";
+        lage = match.starter ? "steht in der Startelf" : "auf der Bank";
+      } else if (x.zustand === "aktiv") {
         // Laeuft gerade: in voller Farbe, nur wer nicht (mehr) auf dem Platz
         // steht, wird abgedunkelt.
         darstellung = entry.played && !match.subbedOut ? "" : "opacity-60";
@@ -369,10 +388,11 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Eine der beiden Zeitzonen als eigener, getoenter Block - die Toenung ist
-     * die einzige Kennzeichnung der Gruppe, keine Beschriftung noetig: rot
+     * Eine der Zeitzonen als eigener, getoenter Block - die Toenung ist die
+     * einzige Kennzeichnung der Gruppe, keine Beschriftung noetig: rot
      * angehaucht laeuft gerade, neutral (dazu jede Kachel ausgegraut)
-     * abgepfiffen.
+     * abgepfiffen, in den Hintergrund abgesetzt noch nicht angepfiffen, aber
+     * schon aufgestellt.
      */
     function renderSpielerGruppe(c, eintraege, bgKlasse) {
       if (!eintraege.length) return "";
@@ -388,10 +408,11 @@ window.KT.views = window.KT.views || {};
       var teile = [
         renderSpielerGruppe(c, gruppen.aktiv, "bg-kicker-soft"),
         renderSpielerGruppe(c, gruppen.gespielt, "bg-panel-alt"),
+        renderSpielerGruppe(c, gruppen.aufgestellt, "bg-wash"),
       ].filter(Boolean);
-      // Keine Aufstellung, noch nichts angepfiffen oder gar keine Partien an
-      // diesem Spieltag - dann
-      // bleibt ein LEERER Platzhalter stehen. Er schiebt die Punktzahl an den
+      // Keine Aufstellung, noch nichts angepfiffen (und keine Startelf raus)
+      // oder gar keine Partien an diesem Spieltag - dann bleibt ein LEERER
+      // Platzhalter stehen. Er schiebt die Punktzahl an den
       // rechten Rand; ohne ihn rutschte sie in solchen Zeilen bis an den Namen
       // heran, und die Spalte war von Zeile zu Zeile woanders.
       //
