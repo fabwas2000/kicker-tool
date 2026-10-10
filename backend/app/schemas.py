@@ -105,6 +105,11 @@ class PositionUpdate(BaseModel):
     position: str
 
 
+class KickerLigaIn(BaseModel):
+    # Kopierte Adresse der Liga-Seite im Managerspiel, oder die nackte ID
+    link: str = Field(max_length=500)
+
+
 class PlayerImageIn(BaseModel):
     # "data:image/png;base64,...." - so liefert der Browser das im Canvas
     # verkleinerte Bild.

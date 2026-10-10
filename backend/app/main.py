@@ -410,6 +410,52 @@ def kicker_spieltag(matchday: int):
         raise HTTPException(status_code=502, detail=str(err))
 
 
+KICKER_LIGA_KEY = "kicker_liga"
+
+
+@app.get("/api/kicker/liga")
+def get_kicker_liga(db: Session = Depends(get_db)):
+    row = db.get(models.Setting, KICKER_LIGA_KEY)
+    return {"liga": row.value if row else None}
+
+
+@app.put("/api/kicker/liga")
+def save_kicker_liga(payload: schemas.KickerLigaIn, db: Session = Depends(get_db)):
+    """Nimmt den kopierten Link der Liga (oder die nackte ID) und merkt sich
+    die ID - aus ihr kommen die Mitglieder fuer den Aufstellungs-Import."""
+    liga = kicker_libero.liga_id_aus(payload.link)
+    if liga is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Im Link steht keine Liga. Bitte die Seite der Liga im Managerspiel öffnen und deren Adresse kopieren.",
+        )
+    row = db.get(models.Setting, KICKER_LIGA_KEY)
+    if row is None:
+        db.add(models.Setting(key=KICKER_LIGA_KEY, value=liga))
+    else:
+        row.value = liga
+    db.commit()
+    return {"liga": liga}
+
+
+@app.get("/api/kicker/aufstellungen/{matchday}")
+def kicker_aufstellungen(matchday: int, db: Session = Depends(get_db)):
+    """22er-Kader und Startelf aller Mitglieder der hinterlegten kicker-Liga
+    fuer einen Spieltag. Wie bei den Noten ordnet erst das Frontend den
+    ESPN-Spielern zu und speichert."""
+    if not 1 <= matchday <= 34:
+        raise HTTPException(status_code=400, detail="Spieltag muss zwischen 1 und 34 liegen")
+    row = db.get(models.Setting, KICKER_LIGA_KEY)
+    if row is None:
+        raise HTTPException(
+            status_code=400, detail="Noch keine kicker-Liga hinterlegt – unter „Einstellungen“ den Link der Liga eintragen."
+        )
+    try:
+        return kicker_libero.aufstellungen(matchday, row.value)
+    except kicker_libero.KickerFehler as err:
+        raise HTTPException(status_code=502, detail=str(err))
+
+
 # ---------------------------------------------------------------------------
 # Spielerbilder
 # ---------------------------------------------------------------------------

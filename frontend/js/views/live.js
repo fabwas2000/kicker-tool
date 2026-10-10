@@ -58,7 +58,7 @@ window.KT.views = window.KT.views || {};
       '      <h1 class="font-display text-3xl font-bold uppercase tracking-tight leading-none">Punkte</h1>',
       '      <p class="text-mute text-sm mt-1" id="md-status">Lade Spielplan…</p>',
       "    </div>",
-      '    <div class="flex items-end gap-1.5">',
+      '    <div class="flex flex-wrap items-end gap-1.5">',
       '      <button id="md-prev" class="kt-btn kt-btn-secondary px-2.5" title="Voriger Spieltag">‹</button>',
       "      <div>",
       '        <label class="kt-eyebrow block mb-1">Punkte</label>',
@@ -66,8 +66,10 @@ window.KT.views = window.KT.views || {};
       "      </div>",
       '      <button id="md-next" class="kt-btn kt-btn-secondary px-2.5" title="Nächster Spieltag">›</button>',
       '      <button id="md-refresh" class="kt-btn kt-btn-primary">Aktualisieren</button>',
+      '      <button id="md-kicker" class="kt-btn kt-btn-secondary" title="Kader und Startelf der Konkurrenten aus dem kicker-Managerspiel übernehmen">Aufstellungen laden</button>',
       "    </div>",
       "  </div>",
+      '  <div id="md-kicker-bericht"></div>',
       '  <div id="md-body"><p class="text-mute">Lade…</p></div>',
       "</section>",
     ].join("\n");
@@ -78,6 +80,8 @@ window.KT.views = window.KT.views || {};
     var prevBtn = container.querySelector("#md-prev");
     var nextBtn = container.querySelector("#md-next");
     var refreshBtn = container.querySelector("#md-refresh");
+    var kickerBtn = container.querySelector("#md-kicker");
+    var berichtEl = container.querySelector("#md-kicker-bericht");
 
     // ------------------------------------------------------------------
     // Rendering
@@ -1482,7 +1486,100 @@ window.KT.views = window.KT.views || {};
     });
 
     selectEl.addEventListener("change", function () {
+      berichtEl.innerHTML = "";
       auswahlLaden(selectEl.value);
+    });
+
+    // ------------------------------------------------------------------
+    // Aufstellungen aus dem kicker-Managerspiel
+    // ------------------------------------------------------------------
+
+    function berichtHtml(b) {
+      var zeilen = b.zeilen.map(function (z) {
+        var symbol, farbe, text;
+        if (z.fehler) {
+          symbol = "✗"; farbe = "text-kicker"; text = z.fehler;
+        } else if (!z.gefunden) {
+          symbol = "○"; farbe = "text-mute"; text = "noch keine Aufstellung bei kicker";
+        } else {
+          symbol = "✓"; farbe = "text-pos";
+          text = [z.formation, z.status, z.kader].filter(Boolean).join(" · ");
+        }
+        var details = (z.offen || []).map(function (n) {
+          return "nicht zugeordnet: " + n;
+        }).concat(z.hinweise || []);
+        return '<li class="py-0.5"><span class="' + farbe + '">' + symbol + "</span> " +
+          '<span class="font-semibold text-ink">' + escapeHtml(z.name) + "</span>" +
+          ' <span class="text-mute">· ' + escapeHtml(text) + "</span>" +
+          (details.length
+            ? '<ul class="pl-5 text-kicker text-xs">' + details.map(function (d) {
+                return "<li>" + escapeHtml(d) + "</li>";
+              }).join("") + "</ul>"
+            : "") +
+          "</li>";
+      }).join("");
+
+      var hinweise = [];
+      if (b.ohneKonkurrent.length) {
+        hinweise.push("In der kicker-Liga, aber nicht in der App: " + b.ohneKonkurrent.join(", "));
+      }
+      if (b.ohneKicker.length) {
+        hinweise.push("In der App, aber nicht in der kicker-Liga: " + b.ohneKicker.join(", "));
+      }
+      if (!b.kaderErsetzt && b.gefunden) {
+        hinweise.push("Älterer Spieltag: nur die Startelf gesetzt, die Kader bleiben wie sie sind.");
+      }
+
+      return [
+        '<div class="kt-panel bg-panel p-3 mb-4 text-sm">',
+        '  <div class="flex items-start justify-between gap-2">',
+        '    <div><div class="kt-eyebrow">kicker · Spieltag ' + b.matchday + "</div>",
+        '      <p class="font-semibold text-ink">' +
+          (b.gefunden
+            ? "Aufstellungen für " + b.gefunden + " von " + b.zeilen.length + " Konkurrenten gefunden"
+            : "kicker hat für diesen Spieltag noch keine Aufstellungen") +
+          "</p></div>",
+        '    <button data-bericht-zu class="kt-btn kt-btn-secondary px-2 py-0.5" title="Schließen">✕</button>',
+        "  </div>",
+        '  <ul class="mt-2">' + zeilen + "</ul>",
+        hinweise.map(function (h) {
+          return '<p class="mt-2 text-mute">' + escapeHtml(h) + "</p>";
+        }).join(""),
+        "</div>",
+      ].join("\n");
+    }
+
+    berichtEl.addEventListener("click", function (e) {
+      if (e.target.closest("[data-bericht-zu]")) berichtEl.innerHTML = "";
+    });
+
+    kickerBtn.addEventListener("click", function () {
+      if (selectEl.value === GESAMT) {
+        KT.ui.showError("Bitte zuerst einen einzelnen Spieltag wählen.");
+        return;
+      }
+      var matchday = Number(selectEl.value);
+      // Den Kader nur ab dem laufenden Spieltag ersetzen - siehe kickerAufstellungen.js.
+      var aktuell = matchdayIndex ? KT.matchdays.currentMatchday(matchdayIndex) : matchday;
+      kickerBtn.disabled = true;
+      kickerBtn.textContent = "Lade von kicker…";
+      KT.kickerAufstellungen
+        .importieren(matchday, {
+          kaderErsetzen: matchday >= aktuell,
+          matchByPlayerId: currentBundle && currentBundle.matchday === matchday ? currentBundle.matchByPlayerId : null,
+        })
+        .then(function (bericht) {
+          if (String(matchday) !== selectEl.value) return;
+          berichtEl.innerHTML = berichtHtml(bericht);
+          return load(matchday);
+        })
+        .catch(function (err) {
+          KT.ui.showError("Aufstellungen nicht geladen: " + KT.ui.backendErrorText(err));
+        })
+        .then(function () {
+          kickerBtn.disabled = false;
+          kickerBtn.textContent = "Aufstellungen laden";
+        });
     });
     prevBtn.addEventListener("click", function () {
       var n = Number(selectEl.value);

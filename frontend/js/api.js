@@ -117,6 +117,17 @@ window.KT = window.KT || {};
     getKickerSpieltag: function (matchday) {
       return request("/api/kicker/spieltag/" + matchday);
     },
+    /** Kader und Startelf aller Mitglieder der hinterlegten kicker-Liga. */
+    getKickerAufstellungen: function (matchday) {
+      return request("/api/kicker/aufstellungen/" + matchday);
+    },
+    getKickerLiga: function () {
+      return request("/api/kicker/liga");
+    },
+    /** Nimmt den kopierten Link der Liga-Seite (oder die nackte ID). */
+    saveKickerLiga: function (link) {
+      return request("/api/kicker/liga", { method: "PUT", body: JSON.stringify({ link: link }) });
+    },
 
     listKickerPositions: function () {
       return request("/api/kicker-positions");

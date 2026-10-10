@@ -129,7 +129,7 @@ bewusst NICHT über das Backend, sondern direkt im Browser gegen ESPN.
 | **Spieltag** | Spieltag 1–34 wählen. Zuerst nur die Rangliste der Konkurrenten mit Punktzahl; ein Klick auf eine Zeile klappt die Startelf auf dem Spielfeld auf (Formation wie gespeichert, mit Foto, Punkten, Toren, Vorlagen und Note je Spieler). Von dort öffnet der Knopf **„Aufstellung bearbeiten"** direkt den Editor für diesen Konkurrenten und Spieltag (siehe unten) – auch wenn noch gar keine Aufstellung existiert. **Ein Klick auf einen Spieler zeigt, wofür er seine Punkte bekommen hat** – Zeile für Zeile bis zur Summe. Vergangene Spieltage zeigen echte Ergebnisse, kommende alle Spieler auf 0 mit ihrem jeweiligen Gegner. **Läuft ein Spiel gerade**, zeigt die (auch eingeklappte) Kopfzeile jedes betroffenen Konkurrenten auf einen Blick, wie viele seiner Spieler **gerade aktiv auf dem Platz stehen** bzw. **noch auf der Bank sitzen**; auf dem Spielfeld selbst steht das je Spieler genauso (inkl. „ausgewechselt"). Die Punkte selbst laufen die ganze Zeit mit – Tore, Startelf/Einwechslung usw. fließen ein, sobald ESPN sie meldet, nicht erst nach Abpfiff. Ab 15 Minuten vor dem ersten Anstoß bis nach dem letzten Abpfiff aktualisiert sich die Seite alle 30 Sekunden von selbst – aufgeklappte Zeilen bleiben dabei offen. |
 | **Noten** | Nach Abpfiff die kicker-Noten eintragen: Spieltag wählen, Mannschaft anklicken, alle eingesetzten Spieler erscheinen mit Eingabefeld. Jede Mannschaft zeigt zwei Zähler: wie viele Noten insgesamt schon eingetragen sind, und – wichtiger – wie viele **der bei einem Konkurrenten aufgestellten (★) Spieler** schon eine Note haben (z.B. „6/6 ★ benotet"). Dieselbe Zahl für den ganzen Spieltag steht oben in der Kopfzeile. Spieler, die bei einem Konkurrenten in der Aufstellung stehen, sind mit ★ markiert und stehen oben. Je Spieler lassen sich außerdem **Tore und Vorlagen korrigieren** (wenn kicker anders zählt als ESPN) und **„Spieler des Spiels"** ankreuzen. |
 | **Kader** | 22er-Kader je Konkurrent aus echten Bundesliga-Spielern zusammenstellen. Über der Liste legt der Knopf **„Spieler hinzufügen"** einen neuen Konkurrenten an; jede Zeile hat zusätzlich „Umbenennen" und ✕ (löschen inkl. Kader/Aufstellungen). |
-| **Einstellungen** | Backend-URL und die komplette Punkte-Tabelle. |
+| **Einstellungen** | Backend-URL, die kicker-Liga für den Aufstellungs-Import und die komplette Punkte-Tabelle. |
 
 Einen eigenen Tab für Konkurrenten oder Aufstellungen gibt es bewusst nicht -
 Konkurrenten anlegen/umbenennen/löschen passiert direkt auf der Kader-Seite,
@@ -214,6 +214,35 @@ Die Reihenabstände in `frontend/js/formations.js` sind so gewählt, dass
 zwischen zwei Reihen **mindestens 17 %** der Feldhöhe liegen. Darunter stoßen
 die höheren Hochformat-Kacheln aneinander - das war der Grund, warum Torwart
 und Abwehr früher überlappten.
+
+## Import aus dem kicker-Managerspiel
+
+Das Managerspiel auf kicker.de ist eine eingebettete App von
+**kicker-libero.de** und holt seine Daten als JSON von dort. Anders als
+kicker.de selbst sitzt diese Schnittstelle nicht hinter dem Bot-Schutz
+(DataDome), und für Spieltagsdaten und fremde Aufstellungen braucht es kein
+Login. Das Backend (`app/kicker_libero.py`) ruft sie ab und bereitet auf; die
+Zuordnung kicker-Spieler → ESPN-Spieler läuft im Frontend über den Namen
+(`js/kickerZuordnung.js`), weil nur dort die ESPN-Daten liegen. Gespeichert
+wird über dieselben Endpunkte wie beim Eintragen von Hand.
+
+**Aufstellungen laden** (Spieltag-Seite): holt für den gewählten Spieltag
+22er-Kader und Startelf aller Mitglieder der kicker-Liga. Die Liga wird einmal
+unter **Einstellungen** hinterlegt (Adresse der Liga-Seite im Managerspiel
+einfügen); Konkurrenten werden über den Namen zugeordnet. Die Rückmeldung
+zeigt je Konkurrent, ob kicker schon eine Aufstellung hat und ob sie neu,
+geändert oder unverändert ist, dazu Spieler, die sich nicht zuordnen ließen.
+Der Kader wird nur ab dem laufenden Spieltag ersetzt – bei einem früheren
+Spieltag würde er sonst auf den damaligen Stand zurückfallen; dort wird nur
+die Startelf gesetzt. Die Reihenfolge innerhalb einer Reihe bleibt, wie sie
+von Hand gesetzt war.
+
+**kicker-Noten laden** (Noten-Seite): übernimmt Note, Tore, Vorlagen,
+Spieler des Spiels und Platzverweise – aber nur für Spiele, die kicker schon
+bewertet hat. Tore und Vorlagen werden wie bei der Handkorrektur nur dort
+gespeichert, wo kicker von ESPN abweicht. Danach prüft der Import für jeden
+aufgestellten Spieler, ob das Tool dieselben Punkte rechnet wie kicker, und
+listet Abweichungen.
 
 ## Aufstellen
 

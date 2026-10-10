@@ -47,6 +47,19 @@ window.KT.views = window.KT.views || {};
       "      erreichbar. Abmelden kannst du dich oben rechts.</p>",
       "  </div>",
 
+      '  <div id="kicker-liga-section">',
+      '    <h2 class="font-display text-xl font-bold uppercase tracking-tight mb-1">kicker-Liga</h2>',
+      '    <p class="text-mute text-sm mb-3">Aus dieser Liga holt „Aufstellungen laden“ auf der Punkte-Seite',
+      "      Kader und Startelf der Konkurrenten. Im Managerspiel die Seite der Liga öffnen und ihre",
+      "      Adresse hier einfügen.</p>",
+      '    <form id="kicker-liga-form" class="space-y-3">',
+      '      <input id="kicker-liga" type="text" placeholder="https://www.kicker.de/managerspiel/interactive/…/group/round/…"',
+      '        class="kt-input w-full" />',
+      '      <button type="submit" class="kt-btn kt-btn-primary">Liga speichern</button>',
+      '      <p id="kicker-liga-status" class="text-sm text-mute"></p>',
+      "    </form>",
+      "  </div>",
+
       '  <div id="rules-section">',
       '    <h2 class="font-display text-xl font-bold uppercase tracking-tight mb-1">Punkte-Regeln</h2>',
       '    <p class="text-mute text-sm mb-4">Standard = offizielles kicker-Managerspiel Interactive.',
@@ -86,6 +99,32 @@ window.KT.views = window.KT.views || {};
         .catch(function (err) {
           statusEl.textContent = "✗ Nicht erreichbar: " + (err.message || err);
           statusEl.className = "text-sm text-kicker font-semibold";
+        });
+    });
+
+    // ---------------- kicker-Liga ----------------
+    var ligaInput = container.querySelector("#kicker-liga");
+    var ligaStatus = container.querySelector("#kicker-liga-status");
+
+    function zeigeLiga(liga) {
+      ligaStatus.textContent = liga ? "Hinterlegt: Liga " + liga : "Noch keine Liga hinterlegt.";
+    }
+
+    KT.api.getKickerLiga().then(function (r) { zeigeLiga(r.liga); }).catch(function () {});
+
+    container.querySelector("#kicker-liga-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var link = ligaInput.value.trim();
+      if (!link) return;
+      KT.api
+        .saveKickerLiga(link)
+        .then(function (r) {
+          ligaInput.value = "";
+          zeigeLiga(r.liga);
+          KT.ui.showInfo("kicker-Liga gespeichert.");
+        })
+        .catch(function (err) {
+          KT.ui.showError("Konnte Liga nicht speichern: " + KT.ui.backendErrorText(err));
         });
     });
 
