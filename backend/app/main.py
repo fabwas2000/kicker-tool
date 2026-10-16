@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import re
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,6 +57,17 @@ async def schreibschutz(request: Request, call_next):
                 content={"detail": "Passwort fehlt oder ist falsch. Oben rechts neu anmelden."},
             )
     return await call_next(request)
+
+
+def passwort_verlangen(request: Request) -> None:
+    """Fuer LESENDE Endpunkte, die trotzdem nur Angemeldete nutzen sollen -
+    die Middleware oben prueft nur Schreibzugriffe."""
+    if APP_PASSWORD and not hmac.compare_digest(
+        request.headers.get(PASSWORT_HEADER, ""), APP_PASSWORD
+    ):
+        raise HTTPException(
+            status_code=401, detail="Passwort fehlt oder ist falsch. Oben rechts neu anmelden."
+        )
 
 
 cors_origins = os.environ.get("CORS_ORIGINS", "*")
@@ -438,11 +450,46 @@ def save_kicker_liga(payload: schemas.KickerLigaIn, db: Session = Depends(get_db
     return {"liga": liga}
 
 
-@app.get("/api/kicker/aufstellungen/{matchday}")
+KICKER_IMPORT_STAND_KEY = "kicker_aufstellungen_stand"
+
+
+@app.get("/api/kicker/aufstellungen-stand")
+def get_kicker_import_stand(db: Session = Depends(get_db)):
+    """Wann zuletzt Aufstellungen von kicker uebernommen wurden. Daran sieht
+    jedes Geraet, ob seit der letzten Anstosszeit schon jemand geladen hat -
+    sonst luede jedes offene Handy einzeln nach."""
+    row = db.get(models.Setting, KICKER_IMPORT_STAND_KEY)
+    if row is None:
+        return {"matchday": None, "zeit": None}
+    try:
+        return json.loads(row.value)
+    except json.JSONDecodeError:
+        return {"matchday": None, "zeit": None}
+
+
+@app.put("/api/kicker/aufstellungen-stand")
+def save_kicker_import_stand(payload: schemas.KickerImportStandIn, db: Session = Depends(get_db)):
+    """Die Zeit setzt der Server, nicht das Geraet - eine falsch gehende Uhr
+    auf einem Handy soll den naechsten Lauf weder verhindern noch vorziehen."""
+    stand = {"matchday": payload.matchday, "zeit": datetime.now(timezone.utc).isoformat()}
+    row = db.get(models.Setting, KICKER_IMPORT_STAND_KEY)
+    if row is None:
+        db.add(models.Setting(key=KICKER_IMPORT_STAND_KEY, value=json.dumps(stand)))
+    else:
+        row.value = json.dumps(stand)
+    db.commit()
+    return stand
+
+
+@app.get("/api/kicker/aufstellungen/{matchday}", dependencies=[Depends(passwort_verlangen)])
 def kicker_aufstellungen(matchday: int, db: Session = Depends(get_db)):
     """22er-Kader und Startelf aller Mitglieder der hinterlegten kicker-Liga
     fuer einen Spieltag. Wie bei den Noten ordnet erst das Frontend den
-    ESPN-Spielern zu und speichert."""
+    ESPN-Spielern zu und speichert.
+
+    Nur fuer Angemeldete, obwohl nur gelesen wird: Jeder Aufruf fragt kicker
+    ein gutes Dutzend Mal ab, und ohne Anmeldung liesse sich das Ergebnis
+    ohnehin nicht speichern."""
     if not 1 <= matchday <= 34:
         raise HTTPException(status_code=400, detail="Spieltag muss zwischen 1 und 34 liegen")
     row = db.get(models.Setting, KICKER_LIGA_KEY)

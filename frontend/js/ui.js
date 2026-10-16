@@ -61,8 +61,45 @@ window.KT = window.KT || {};
     return String(a.name || "").localeCompare(String(b.name || ""), "de");
   }
 
+  // ---------------------------------------------------------------
+  // Hinweis "Server wacht auf" (ausgeloest von api.js)
+  // ---------------------------------------------------------------
+  // Bewusst grosszuegig: Render braucht meist 30-60 Sekunden. Laeuft der
+  // Countdown zu lang, ist die Seite einfach frueher da - das ist angenehmer
+  // als ein Countdown, der bei null steht und trotzdem noch nichts passiert.
+  var AUFWACHEN_DAUER_MS = 90 * 1000;
+  var aufwachTakt = null;
+
+  function aufwachZeichnen(seit) {
+    var rest = Math.ceil((seit + AUFWACHEN_DAUER_MS - Date.now()) / 1000);
+    var anteil = Math.min(1, (Date.now() - seit) / AUFWACHEN_DAUER_MS);
+    document.getElementById("aufwach-rest").textContent =
+      rest > 0 ? "noch ca. " + rest + " s" : "gleich geschafft …";
+    document.getElementById("aufwach-balken").style.width = Math.round(anteil * 100) + "%";
+  }
+
+  var aufwachHinweis = {
+    /** @param seit Zeitpunkt (ms) der ersten haengenden Anfrage */
+    zeigen: function (seit) {
+      var el = document.getElementById("aufwach-hinweis");
+      if (!el) return;
+      clearInterval(aufwachTakt);
+      aufwachZeichnen(seit);
+      el.hidden = false;
+      aufwachTakt = setInterval(function () {
+        aufwachZeichnen(seit);
+      }, 1000);
+    },
+    verbergen: function () {
+      clearInterval(aufwachTakt);
+      var el = document.getElementById("aufwach-hinweis");
+      if (el) el.hidden = true;
+    },
+  };
+
   KT.ui = {
     escapeHtml: escapeHtml,
+    aufwachHinweis: aufwachHinweis,
     lastName: lastName,
     positionRank: positionRank,
     comparePlayers: comparePlayers,

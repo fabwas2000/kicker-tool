@@ -57,6 +57,7 @@ window.KT.views = window.KT.views || {};
       "    <div>",
       '      <h1 class="font-display text-3xl font-bold uppercase tracking-tight leading-none">Punkte</h1>',
       '      <p class="text-mute text-sm mt-1" id="md-status">Lade Spielplan…</p>',
+      '      <p class="text-mute text-xs mt-0.5" id="md-kicker-auto"></p>',
       "    </div>",
       '    <div class="flex flex-wrap items-end gap-1.5">',
       '      <button id="md-prev" class="kt-btn kt-btn-secondary px-2.5" title="Voriger Spieltag">‹</button>',
@@ -66,7 +67,11 @@ window.KT.views = window.KT.views || {};
       "      </div>",
       '      <button id="md-next" class="kt-btn kt-btn-secondary px-2.5" title="Nächster Spieltag">›</button>',
       '      <button id="md-refresh" class="kt-btn kt-btn-primary">Aktualisieren</button>',
-      '      <button id="md-kicker" class="kt-btn kt-btn-secondary" title="Kader und Startelf der Konkurrenten aus dem kicker-Managerspiel übernehmen">Aufstellungen laden</button>',
+      // Nur angemeldet: das Backend gibt die kicker-Daten sonst gar nicht
+      // heraus, und speichern liesse sich das Ergebnis auch nicht.
+      KT.auth.istOffen()
+        ? '      <button id="md-kicker" class="kt-btn kt-btn-secondary" title="Kader und Startelf der Konkurrenten aus dem kicker-Managerspiel übernehmen">Aufstellungen laden</button>'
+        : "",
       "    </div>",
       "  </div>",
       '  <div id="md-kicker-bericht"></div>',
@@ -82,6 +87,7 @@ window.KT.views = window.KT.views || {};
     var refreshBtn = container.querySelector("#md-refresh");
     var kickerBtn = container.querySelector("#md-kicker");
     var berichtEl = container.querySelector("#md-kicker-bericht");
+    var autoEl = container.querySelector("#md-kicker-auto");
 
     // ------------------------------------------------------------------
     // Rendering
@@ -1553,34 +1559,90 @@ window.KT.views = window.KT.views || {};
       if (e.target.closest("[data-bericht-zu]")) berichtEl.innerHTML = "";
     });
 
-    kickerBtn.addEventListener("click", function () {
+    function uhrzeit(wann) {
+      return new Date(wann).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
+    }
+
+    /** Eine Zeile unter der Ueberschrift: wann automatisch geladen wurde und wird. */
+    function autoZeileZeichnen() {
+      if (!KT.auth.istOffen()) {
+        autoEl.textContent = "";
+        return;
+      }
+      var z = KT.autoAufstellungen.zustand();
+      var teile = [];
+      if (z.laeuft) {
+        teile.push("Lade Aufstellungen von kicker …");
+      } else {
+        if (z.stand && z.stand.zeit) {
+          teile.push("Aufstellungen zuletzt geladen " + uhrzeit(z.stand.zeit) + " (Spieltag " + z.stand.matchday + ")");
+        }
+        if (z.naechster) teile.push("automatisch wieder " + uhrzeit(z.naechster.zeit));
+        if (z.fehler) teile.push("letzter automatischer Versuch gescheitert: " + z.fehler);
+      }
+      autoEl.textContent = teile.join(" · ");
+      autoEl.classList.toggle("text-kicker", Boolean(z.fehler) && !z.laeuft);
+    }
+
+    /** Aenderungen eines automatischen Laufs in einem Satz - oder null, wenn alles gleich blieb. */
+    function autoZusammenfassung(b) {
+      var geaendert = b.zeilen.filter(function (z) {
+        return z.status === "neu" || z.status === "aktualisiert" || z.kader;
+      }).length;
+      if (!geaendert) return null;
+      return "Aufstellungen von kicker übernommen: " + geaendert +
+        (geaendert === 1 ? " Konkurrent geändert" : " Konkurrenten geändert");
+    }
+
+    var autoAbmelden = KT.autoAufstellungen.beiAenderung(function (e) {
+      autoZeileZeichnen();
+      if (kickerBtn && (e.art === "start" || e.art === "fertig" || e.art === "fehler")) {
+        kickerBtn.disabled = e.art === "start";
+        kickerBtn.textContent = e.art === "start" ? "Lade von kicker…" : "Aufstellungen laden";
+      }
+      if (e.art === "fehler" && !e.automatisch) {
+        KT.ui.showError("Aufstellungen nicht geladen: " + KT.ui.backendErrorText(e.fehler));
+      }
+      if (e.art !== "fertig" || String(e.matchday) !== selectEl.value) return;
+
+      if (e.automatisch) {
+        // Automatisch nur dann ein Kasten, wenn etwas schiefging - sonst
+        // stuende er nach jedem Anstoss wieder da.
+        var probleme = e.bericht.zeilen.some(function (z) { return z.fehler; });
+        if (probleme) berichtEl.innerHTML = berichtHtml(e.bericht);
+        var satz = autoZusammenfassung(e.bericht);
+        if (satz) KT.ui.showInfo(satz);
+      } else {
+        berichtEl.innerHTML = berichtHtml(e.bericht);
+      }
+      load(e.matchday);
+    });
+    autoZeileZeichnen();
+
+    if (kickerBtn) kickerBtn.addEventListener("click", function () {
       if (selectEl.value === GESAMT) {
         KT.ui.showError("Bitte zuerst einen einzelnen Spieltag wählen.");
         return;
       }
+      if (KT.autoAufstellungen.zustand().laeuft) {
+        KT.ui.showInfo("Die Aufstellungen werden gerade schon geladen.");
+        return;
+      }
       var matchday = Number(selectEl.value);
-      // Den Kader nur ab dem laufenden Spieltag ersetzen - siehe kickerAufstellungen.js.
-      var aktuell = matchdayIndex ? KT.matchdays.currentMatchday(matchdayIndex) : matchday;
-      kickerBtn.disabled = true;
-      kickerBtn.textContent = "Lade von kicker…";
-      KT.kickerAufstellungen
+      KT.autoAufstellungen
         .importieren(matchday, {
-          kaderErsetzen: matchday >= aktuell,
           matchByPlayerId: currentBundle && currentBundle.matchday === matchday ? currentBundle.matchByPlayerId : null,
         })
-        .then(function (bericht) {
-          if (String(matchday) !== selectEl.value) return;
-          berichtEl.innerHTML = berichtHtml(bericht);
-          return load(matchday);
-        })
-        .catch(function (err) {
-          KT.ui.showError("Aufstellungen nicht geladen: " + KT.ui.backendErrorText(err));
-        })
-        .then(function () {
-          kickerBtn.disabled = false;
-          kickerBtn.textContent = "Aufstellungen laden";
+        .catch(function () {
+          /* gemeldet ueber beiAenderung oben */
         });
     });
+    // Laeuft beim Aufbau der Seite schon ein (automatischer) Import, den Knopf
+    // gleich passend zeigen.
+    if (kickerBtn && KT.autoAufstellungen.zustand().laeuft) {
+      kickerBtn.disabled = true;
+      kickerBtn.textContent = "Lade von kicker…";
+    }
     prevBtn.addEventListener("click", function () {
       var n = Number(selectEl.value);
       if (n > 1) selectMatchday(n - 1);
@@ -1628,6 +1690,7 @@ window.KT.views = window.KT.views || {};
     return loadPromise.then(function () {
       return function cleanup() {
         clearInterval(pollTimer);
+        autoAbmelden();
         document.removeEventListener("keydown", onKeydown);
         closeDetail(); // haengt an document.body, wuerde sonst stehen bleiben
       };

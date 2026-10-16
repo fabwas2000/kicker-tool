@@ -237,6 +237,29 @@ Spieltag würde er sonst auf den damaligen Stand zurückfallen; dort wird nur
 die Startelf gesetzt. Die Reihenfolge innerhalb einer Reihe bleibt, wie sie
 von Hand gesetzt war.
 
+Laden geht **nur angemeldet** – ohne Anmeldung ist der Knopf ausgeblendet, und
+das Backend gibt `/api/kicker/aufstellungen/…` ohne Passwort gar nicht heraus
+(jeder Abruf fragt kicker ein Dutzend Mal ab).
+
+**Automatisch:** Zwei Minuten nach **jeder Anstoßzeit** des Spieltags
+(Fr 20:30, Sa 15:30, Sa 18:30 …) lädt das Tool die Aufstellungen von selbst.
+Mehrfach, weil im Managerspiel Interactive jeder bis zum Anpfiff eines Spiels
+noch umstellen darf – mit jedem Anstoß stehen weitere Spieler fest. Das läuft
+im Browser (`js/autoAufstellungen.js`), weil nur dort die Zuordnung zu ESPN
+geht; es braucht also ein **angemeldetes Gerät mit offener Seite**. Wer die
+Seite erst später öffnet, holt einen verpassten Lauf sofort nach. Wann zuletzt
+geladen wurde, merkt sich das Backend (`/api/kicker/aufstellungen-stand`), so
+lädt ein zweites offenes Gerät nicht noch einmal. Unter der Überschrift der
+Punkte-Seite steht, wann zuletzt und wann als Nächstes geladen wird.
+
+## Wenn der Server schläft
+
+Render legt das kostenlose Backend nach 15 Minuten ohne Anfrage schlafen; der
+erste Aufruf danach hängt, bis es wieder läuft (meist 30–60 Sekunden). Hat das
+Gerät länger als 14 Minuten keine Antwort bekommen und dauert die nächste
+Anfrage länger als 2 Sekunden, erscheint oben ein Hinweis mit Countdown (bewusst
+großzügig: 90 Sekunden). Er verschwindet, sobald die erste Antwort da ist.
+
 **kicker-Noten laden** (Noten-Seite): übernimmt Note, Tore, Vorlagen,
 Spieler des Spiels und Platzverweise – aber nur für Spiele, die kicker schon
 bewertet hat. Tore und Vorlagen werden wie bei der Handkorrektur nur dort

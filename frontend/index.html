@@ -86,6 +86,19 @@
           </span>
         </div>
       </nav>
+      <!-- Erscheint, solange das schlafende Backend hochfaehrt. Siehe js/api.js -->
+      <div id="aufwach-hinweis" class="bg-panel-alt border-b border-line" role="status" hidden>
+        <div class="max-w-5xl mx-auto px-4 py-2 flex items-baseline gap-3 text-sm">
+          <span class="flex-1 text-mute-dark">
+            Der Server hat nach einer längeren Pause geschlafen und startet gerade neu.
+            Das dauert nur beim ersten Aufruf so lange.
+          </span>
+          <span id="aufwach-rest" class="font-semibold text-ink whitespace-nowrap tabular-nums"></span>
+        </div>
+        <div class="h-0.5 bg-line">
+          <div id="aufwach-balken" class="h-full bg-kicker-btn transition-[width] duration-1000 ease-linear" style="width: 0"></div>
+        </div>
+      </div>
     </header>
 
     <main id="app" class="max-w-5xl mx-auto px-4 py-6"></main>
@@ -113,6 +126,7 @@
     <script src="js/kickerZuordnung.js?v=DEV"></script>
     <script src="js/kickerNoten.js?v=DEV"></script>
     <script src="js/kickerAufstellungen.js?v=DEV"></script>
+    <script src="js/autoAufstellungen.js?v=DEV"></script>
     <script src="js/router.js?v=DEV"></script>
     <script src="js/views/lineupEditor.js?v=DEV"></script>
     <script src="js/views/live.js?v=DEV"></script>

@@ -110,6 +110,10 @@ class KickerLigaIn(BaseModel):
     link: str = Field(max_length=500)
 
 
+class KickerImportStandIn(BaseModel):
+    matchday: int = Field(ge=1, le=34)
+
+
 class PlayerImageIn(BaseModel):
     # "data:image/png;base64,...." - so liefert der Browser das im Canvas
     # verkleinerte Bild.

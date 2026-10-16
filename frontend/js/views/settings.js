@@ -49,9 +49,10 @@ window.KT.views = window.KT.views || {};
 
       '  <div id="kicker-liga-section">',
       '    <h2 class="font-display text-xl font-bold uppercase tracking-tight mb-1">kicker-Liga</h2>',
-      '    <p class="text-mute text-sm mb-3">Aus dieser Liga holt „Aufstellungen laden“ auf der Punkte-Seite',
-      "      Kader und Startelf der Konkurrenten. Im Managerspiel die Seite der Liga öffnen und ihre",
-      "      Adresse hier einfügen.</p>",
+      '    <p class="text-mute text-sm mb-3">Aus dieser Liga holt das Tool Kader und Startelf der Konkurrenten –',
+      "      automatisch kurz nach jeder Anstoßzeit, solange ein angemeldetes Gerät die Seite offen hat,",
+      "      oder per „Aufstellungen laden“ auf der Punkte-Seite. Im Managerspiel die Seite der Liga öffnen",
+      "      und ihre Adresse hier einfügen.</p>",
       '    <form id="kicker-liga-form" class="space-y-3">',
       '      <input id="kicker-liga" type="text" placeholder="https://www.kicker.de/managerspiel/interactive/…/group/round/…"',
       '        class="kt-input w-full" />',

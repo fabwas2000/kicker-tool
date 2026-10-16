@@ -23,8 +23,11 @@
   KT.auth.beiAenderung(function () {
     KT.auth.oberflaecheAktualisieren();
     KT.router.refresh();
+    // Erst angemeldet laeuft der automatische Import - und abgemeldet nicht mehr.
+    KT.autoAufstellungen.pruefen();
   });
 
   KT.auth.init();
   KT.router.start();
+  KT.autoAufstellungen.start();
 })(window.KT);

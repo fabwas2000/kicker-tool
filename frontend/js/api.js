@@ -8,6 +8,45 @@ window.KT = window.KT || {};
 
   var SCHREIB_METHODEN = { POST: true, PUT: true, PATCH: true, DELETE: true };
 
+  // ---------------------------------------------------------------
+  // Aufwachen erkennen
+  // ---------------------------------------------------------------
+  // Render legt den kostenlosen Dienst nach 15 Minuten ohne Anfrage schlafen;
+  // die erste Anfrage danach haengt, bis er wieder hochgefahren ist (meist
+  // 30-60 Sekunden). Ohne Hinweis sieht das aus wie eine kaputte Seite.
+  //
+  // Erkannt wird das ohne Rueckfrage beim Server: hat dieses Geraet laenger
+  // als SCHLAF_NACH_MS keine Antwort mehr bekommen und dauert die naechste
+  // Anfrage laenger als HINWEIS_NACH_MS, wacht er sehr wahrscheinlich gerade
+  // auf. Andere langsame Anfragen (etwa der kicker-Import) loesen den Hinweis
+  // nicht aus, weil kurz vorher schon eine Antwort kam.
+  var SCHLAF_NACH_MS = 14 * 60 * 1000;
+  var HINWEIS_NACH_MS = 2000;
+  var letzteAntwort = 0;
+  var aufwachenSeit = 0;
+  var hinweisTimer = null;
+
+  function aufwachenBeginnt() {
+    if (aufwachenSeit) return;
+    aufwachenSeit = Date.now();
+    var seit = aufwachenSeit;
+    hinweisTimer = setTimeout(function () {
+      KT.ui.aufwachHinweis.zeigen(seit);
+    }, HINWEIS_NACH_MS);
+  }
+
+  // Jede Antwort - auch eine Fehlermeldung - heisst: der Server ist wach.
+  function serverAntwortet() {
+    letzteAntwort = Date.now();
+    aufwachenVorbei();
+  }
+
+  function aufwachenVorbei() {
+    aufwachenSeit = 0;
+    clearTimeout(hinweisTimer);
+    KT.ui.aufwachHinweis.verbergen();
+  }
+
   function request(path, options) {
     options = options || {};
     var method = options.method || "GET";
@@ -16,8 +55,9 @@ window.KT = window.KT || {};
       headers: { "Content-Type": "application/json" },
     };
     // Nur bei aendernden Anfragen: Lesen ist ohne Passwort erlaubt, damit man
-    // die Seite auch ohne Eingabe ansehen kann.
-    if (SCHREIB_METHODEN[method]) {
+    // die Seite auch ohne Eingabe ansehen kann. Ausnahme: lesende Endpunkte,
+    // die das Backend trotzdem nur Angemeldeten gibt (options.mitPasswort).
+    if (SCHREIB_METHODEN[method] || options.mitPasswort) {
       var passwort = KT.config.getPasswort();
       if (passwort) init.headers["X-Kicker-Passwort"] = passwort;
     }
@@ -36,7 +76,10 @@ window.KT = window.KT || {};
       );
     }
 
+    if (!letzteAntwort || Date.now() - letzteAntwort > SCHLAF_NACH_MS) aufwachenBeginnt();
+
     return fetch(basis + path, init).then(function (res) {
+      serverAntwortet();
       if (!res.ok) {
         return res
           .json()
@@ -53,6 +96,11 @@ window.KT = window.KT || {};
       }
       if (res.status === 204) return null;
       return res.json();
+    }, function (err) {
+      // Gar nicht erreichbar: Die Ansichten melden das selbst, ein
+      // weiterlaufender Countdown waere dann irrefuehrend.
+      aufwachenVorbei();
+      throw err;
     });
   }
 
@@ -117,9 +165,19 @@ window.KT = window.KT || {};
     getKickerSpieltag: function (matchday) {
       return request("/api/kicker/spieltag/" + matchday);
     },
-    /** Kader und Startelf aller Mitglieder der hinterlegten kicker-Liga. */
+    /** Kader und Startelf aller Mitglieder der hinterlegten kicker-Liga. Nur angemeldet. */
     getKickerAufstellungen: function (matchday) {
-      return request("/api/kicker/aufstellungen/" + matchday);
+      return request("/api/kicker/aufstellungen/" + matchday, { mitPasswort: true });
+    },
+    /** Wann zuletzt Aufstellungen uebernommen wurden: {matchday, zeit} (beides ggf. null). */
+    getKickerImportStand: function () {
+      return request("/api/kicker/aufstellungen-stand");
+    },
+    saveKickerImportStand: function (matchday) {
+      return request("/api/kicker/aufstellungen-stand", {
+        method: "PUT",
+        body: JSON.stringify({ matchday: matchday }),
+      });
     },
     getKickerLiga: function () {
       return request("/api/kicker/liga");
