@@ -237,20 +237,35 @@ Spieltag würde er sonst auf den damaligen Stand zurückfallen; dort wird nur
 die Startelf gesetzt. Die Reihenfolge innerhalb einer Reihe bleibt, wie sie
 von Hand gesetzt war.
 
-Laden geht **nur angemeldet** – ohne Anmeldung ist der Knopf ausgeblendet, und
-das Backend gibt `/api/kicker/aufstellungen/…` ohne Passwort gar nicht heraus
-(jeder Abruf fragt kicker ein Dutzend Mal ab).
+Der Knopf ist **nur angemeldet** sichtbar, und das Backend gibt
+`/api/kicker/aufstellungen/…` ohne Passwort gar nicht heraus (jeder Abruf
+fragt kicker ein Dutzend Mal ab).
 
 **Automatisch:** Zwei Minuten nach **jeder Anstoßzeit** des Spieltags
-(Fr 20:30, Sa 15:30, Sa 18:30 …) lädt das Tool die Aufstellungen von selbst.
-Mehrfach, weil im Managerspiel Interactive jeder bis zum Anpfiff eines Spiels
-noch umstellen darf – mit jedem Anstoß stehen weitere Spieler fest. Das läuft
-im Browser (`js/autoAufstellungen.js`), weil nur dort die Zuordnung zu ESPN
-geht; es braucht also ein **angemeldetes Gerät mit offener Seite**. Wer die
-Seite erst später öffnet, holt einen verpassten Lauf sofort nach. Wann zuletzt
-geladen wurde, merkt sich das Backend (`/api/kicker/aufstellungen-stand`), so
-lädt ein zweites offenes Gerät nicht noch einmal. Unter der Überschrift der
-Punkte-Seite steht, wann zuletzt und wann als Nächstes geladen wird.
+(Fr 20:30, Sa 15:30, Sa 18:30 …) lädt die erste geöffnete Seite die
+Aufstellungen von selbst – **mit oder ohne Anmeldung**. Mehrfach, weil im
+Managerspiel Interactive jeder bis zum Anpfiff eines Spiels noch umstellen
+darf; mit jedem Anstoß stehen weitere Spieler fest. Das läuft im Browser
+(`js/autoAufstellungen.js`), weil nur dort die Zuordnung zu ESPN geht. Ist
+niemand auf der Seite, passiert nichts; der nächste Besucher holt den
+jüngsten verpassten Lauf nach.
+
+Damit das ohne Passwort geht, fragt die Seite den Server um eine Freigabe
+(`POST /api/kicker/auto-freigabe` mit Spieltag und Anstoßzeit). Der Server
+erteilt sie nur, wenn
+
+- die Anstoßzeit vorbei ist (höchstens 6 Stunden),
+- seit dieser Anstoßzeit noch nicht geladen wurde (automatisch oder von Hand),
+- die letzte automatische Freigabe mindestens 20 Minuten zurückliegt.
+
+Er vermerkt den Lauf sofort – alle weiteren Seiten bekommen eine Absage – und
+gibt einen Schlüssel (Kopfzeile `X-Kicker-Auto`) heraus, der 10 Minuten lang
+**nur** das Lesen der kicker-Daten und das Speichern von Kader und
+Aufstellungen erlaubt. Restrisiko: Die Anstoßzeit kommt von der Seite; wer
+die Anfrage gezielt fälscht, könnte also alle 20 Minuten Aufstellungen
+überschreiben. Für eine Freundesliga vertretbar. Scheitert ein Lauf (etwa weil
+kicker nicht antwortet), gibt es erst zur nächsten Anstoßzeit einen neuen –
+dafür bleibt der Knopf.
 
 ## Wenn der Server schläft
 

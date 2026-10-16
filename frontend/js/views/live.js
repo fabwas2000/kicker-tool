@@ -57,7 +57,6 @@ window.KT.views = window.KT.views || {};
       "    <div>",
       '      <h1 class="font-display text-3xl font-bold uppercase tracking-tight leading-none">Punkte</h1>',
       '      <p class="text-mute text-sm mt-1" id="md-status">Lade Spielplan…</p>',
-      '      <p class="text-mute text-xs mt-0.5" id="md-kicker-auto"></p>',
       "    </div>",
       '    <div class="flex flex-wrap items-end gap-1.5">',
       '      <button id="md-prev" class="kt-btn kt-btn-secondary px-2.5" title="Voriger Spieltag">‹</button>',
@@ -87,7 +86,6 @@ window.KT.views = window.KT.views || {};
     var refreshBtn = container.querySelector("#md-refresh");
     var kickerBtn = container.querySelector("#md-kicker");
     var berichtEl = container.querySelector("#md-kicker-bericht");
-    var autoEl = container.querySelector("#md-kicker-auto");
 
     // ------------------------------------------------------------------
     // Rendering
@@ -1559,31 +1557,6 @@ window.KT.views = window.KT.views || {};
       if (e.target.closest("[data-bericht-zu]")) berichtEl.innerHTML = "";
     });
 
-    function uhrzeit(wann) {
-      return new Date(wann).toLocaleString("de-DE", { weekday: "short", hour: "2-digit", minute: "2-digit" });
-    }
-
-    /** Eine Zeile unter der Ueberschrift: wann automatisch geladen wurde und wird. */
-    function autoZeileZeichnen() {
-      if (!KT.auth.istOffen()) {
-        autoEl.textContent = "";
-        return;
-      }
-      var z = KT.autoAufstellungen.zustand();
-      var teile = [];
-      if (z.laeuft) {
-        teile.push("Lade Aufstellungen von kicker …");
-      } else {
-        if (z.stand && z.stand.zeit) {
-          teile.push("Aufstellungen zuletzt geladen " + uhrzeit(z.stand.zeit) + " (Spieltag " + z.stand.matchday + ")");
-        }
-        if (z.naechster) teile.push("automatisch wieder " + uhrzeit(z.naechster.zeit));
-        if (z.fehler) teile.push("letzter automatischer Versuch gescheitert: " + z.fehler);
-      }
-      autoEl.textContent = teile.join(" · ");
-      autoEl.classList.toggle("text-kicker", Boolean(z.fehler) && !z.laeuft);
-    }
-
     /** Aenderungen eines automatischen Laufs in einem Satz - oder null, wenn alles gleich blieb. */
     function autoZusammenfassung(b) {
       var geaendert = b.zeilen.filter(function (z) {
@@ -1595,8 +1568,7 @@ window.KT.views = window.KT.views || {};
     }
 
     var autoAbmelden = KT.autoAufstellungen.beiAenderung(function (e) {
-      autoZeileZeichnen();
-      if (kickerBtn && (e.art === "start" || e.art === "fertig" || e.art === "fehler")) {
+      if (kickerBtn) {
         kickerBtn.disabled = e.art === "start";
         kickerBtn.textContent = e.art === "start" ? "Lade von kicker…" : "Aufstellungen laden";
       }
@@ -1607,9 +1579,10 @@ window.KT.views = window.KT.views || {};
 
       if (e.automatisch) {
         // Automatisch nur dann ein Kasten, wenn etwas schiefging - sonst
-        // stuende er nach jedem Anstoss wieder da.
+        // stuende er nach jedem Anstoss wieder da. Und nur Angemeldeten:
+        // Besucher koennten an den Fehlern ohnehin nichts aendern.
         var probleme = e.bericht.zeilen.some(function (z) { return z.fehler; });
-        if (probleme) berichtEl.innerHTML = berichtHtml(e.bericht);
+        if (probleme && KT.auth.istOffen()) berichtEl.innerHTML = berichtHtml(e.bericht);
         var satz = autoZusammenfassung(e.bericht);
         if (satz) KT.ui.showInfo(satz);
       } else {
@@ -1617,14 +1590,13 @@ window.KT.views = window.KT.views || {};
       }
       load(e.matchday);
     });
-    autoZeileZeichnen();
 
     if (kickerBtn) kickerBtn.addEventListener("click", function () {
       if (selectEl.value === GESAMT) {
         KT.ui.showError("Bitte zuerst einen einzelnen Spieltag wählen.");
         return;
       }
-      if (KT.autoAufstellungen.zustand().laeuft) {
+      if (KT.autoAufstellungen.laeuftGerade()) {
         KT.ui.showInfo("Die Aufstellungen werden gerade schon geladen.");
         return;
       }
@@ -1639,7 +1611,7 @@ window.KT.views = window.KT.views || {};
     });
     // Laeuft beim Aufbau der Seite schon ein (automatischer) Import, den Knopf
     // gleich passend zeigen.
-    if (kickerBtn && KT.autoAufstellungen.zustand().laeuft) {
+    if (kickerBtn && KT.autoAufstellungen.laeuftGerade()) {
       kickerBtn.disabled = true;
       kickerBtn.textContent = "Lade von kicker…";
     }

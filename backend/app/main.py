@@ -4,7 +4,9 @@ import hmac
 import json
 import os
 import re
-from datetime import datetime, timezone
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +38,44 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Kicker Tool Backend")
 
 
+# ----------------------------------------------------------------------
+# Automatischer Import ohne Anmeldung
+# ----------------------------------------------------------------------
+# Zu den Anstosszeiten laden die Seiten die kicker-Aufstellungen von selbst,
+# auch bei Besuchern ohne Passwort. Dafuer gibt es eine kurzlebige Freigabe,
+# die der Server nur erteilt, wenn wirklich ein Lauf ansteht:
+#   * die Anstosszeit liegt in der Vergangenheit (hoechstens 6 Stunden her),
+#   * seitdem wurde nicht schon geladen,
+#   * die letzte automatische Freigabe liegt mindestens 20 Minuten zurueck.
+# Mit der Freigabe duerfen NUR Kader/Aufstellungen geschrieben und die
+# kicker-Daten gelesen werden, und nur wenige Minuten lang. Wer die Anstosszeit
+# faelscht, kann das hoechstens alle 20 Minuten ausnutzen.
+AUTO_HEADER = "X-Kicker-Auto"
+AUTO_FREIGABE_PFAD = "/api/kicker/auto-freigabe"
+AUTO_GUELTIG_SEKUNDEN = 10 * 60
+AUTO_ABSTAND = timedelta(minutes=20)
+AUTO_PFADE = re.compile(
+    r"^/api/(competitors/\d+/squad|competitors/\d+/lineups/\d+|kicker/aufstellungen/\d+)$"
+)
+_auto_freigabe: tuple[str, float] | None = None
+# Zeitpunkt der letzten erteilten Freigabe. Bewusst getrennt vom gespeicherten
+# Lade-Stand: ein manuelles Laden kurz vor Anpfiff soll den automatischen Lauf
+# danach nicht blockieren.
+_letzte_freigabe = 0.0
+
+
+def auto_erlaubt(request: Request) -> bool:
+    gesendet = request.headers.get(AUTO_HEADER, "")
+    if not gesendet or _auto_freigabe is None:
+        return False
+    token, bis = _auto_freigabe
+    return (
+        time.time() < bis
+        and hmac.compare_digest(gesendet, token)
+        and AUTO_PFADE.match(request.url.path) is not None
+    )
+
+
 @app.middleware("http")
 async def schreibschutz(request: Request, call_next):
     """Prueft bei aendernden Anfragen das Passwort.
@@ -47,7 +87,12 @@ async def schreibschutz(request: Request, call_next):
     OPTIONS bleibt frei - das ist die CORS-Vorabfrage des Browsers, die noch
     gar keine eigenen Kopfzeilen mitschicken kann.
     """
-    if APP_PASSWORD and request.method in SCHREIB_METHODEN:
+    if (
+        APP_PASSWORD
+        and request.method in SCHREIB_METHODEN
+        and request.url.path != AUTO_FREIGABE_PFAD
+        and not auto_erlaubt(request)
+    ):
         mitgeschickt = request.headers.get(PASSWORT_HEADER, "")
         # compare_digest statt "==", damit die Antwortzeit nichts ueber das
         # richtige Passwort verraet.
@@ -62,8 +107,10 @@ async def schreibschutz(request: Request, call_next):
 def passwort_verlangen(request: Request) -> None:
     """Fuer LESENDE Endpunkte, die trotzdem nur Angemeldete nutzen sollen -
     die Middleware oben prueft nur Schreibzugriffe."""
-    if APP_PASSWORD and not hmac.compare_digest(
-        request.headers.get(PASSWORT_HEADER, ""), APP_PASSWORD
+    if (
+        APP_PASSWORD
+        and not auto_erlaubt(request)
+        and not hmac.compare_digest(request.headers.get(PASSWORT_HEADER, ""), APP_PASSWORD)
     ):
         raise HTTPException(
             status_code=401, detail="Passwort fehlt oder ist falsch. Oben rechts neu anmelden."
@@ -453,24 +500,12 @@ def save_kicker_liga(payload: schemas.KickerLigaIn, db: Session = Depends(get_db
 KICKER_IMPORT_STAND_KEY = "kicker_aufstellungen_stand"
 
 
-@app.get("/api/kicker/aufstellungen-stand")
-def get_kicker_import_stand(db: Session = Depends(get_db)):
-    """Wann zuletzt Aufstellungen von kicker uebernommen wurden. Daran sieht
-    jedes Geraet, ob seit der letzten Anstosszeit schon jemand geladen hat -
-    sonst luede jedes offene Handy einzeln nach."""
-    row = db.get(models.Setting, KICKER_IMPORT_STAND_KEY)
-    if row is None:
-        return {"matchday": None, "zeit": None}
-    try:
-        return json.loads(row.value)
-    except json.JSONDecodeError:
-        return {"matchday": None, "zeit": None}
-
-
 @app.put("/api/kicker/aufstellungen-stand")
 def save_kicker_import_stand(payload: schemas.KickerImportStandIn, db: Session = Depends(get_db)):
-    """Die Zeit setzt der Server, nicht das Geraet - eine falsch gehende Uhr
-    auf einem Handy soll den naechsten Lauf weder verhindern noch vorziehen."""
+    """Vermerkt ein Laden von Hand, damit danach nicht gleich noch ein
+    automatischer Lauf folgt (siehe auto_freigabe). Die Zeit setzt der
+    Server, nicht das Geraet - eine falsch gehende Uhr auf einem Handy soll
+    den naechsten Lauf weder verhindern noch vorziehen."""
     stand = {"matchday": payload.matchday, "zeit": datetime.now(timezone.utc).isoformat()}
     row = db.get(models.Setting, KICKER_IMPORT_STAND_KEY)
     if row is None:
@@ -479,6 +514,42 @@ def save_kicker_import_stand(payload: schemas.KickerImportStandIn, db: Session =
         row.value = json.dumps(stand)
     db.commit()
     return stand
+
+
+@app.post("/api/kicker/auto-freigabe")
+def auto_freigabe(payload: schemas.AutoFreigabeIn, db: Session = Depends(get_db)):
+    """Erlaubt einen automatischen Import, wenn gerade einer ansteht - siehe
+    Kommentar oben. Vermerkt den Lauf sofort als erledigt, damit nicht mehrere
+    gleichzeitig geoeffnete Seiten parallel laden."""
+    global _auto_freigabe, _letzte_freigabe
+    jetzt = datetime.now(timezone.utc)
+    termin = payload.termin if payload.termin.tzinfo else payload.termin.replace(tzinfo=timezone.utc)
+    if termin > jetzt or jetzt - termin > timedelta(hours=6):
+        return {"erlaubt": False}
+    if time.time() - _letzte_freigabe < AUTO_ABSTAND.total_seconds():
+        return {"erlaubt": False}
+
+    # Seit dem Anstoss schon geladen (automatisch oder von Hand)?
+    row = db.get(models.Setting, KICKER_IMPORT_STAND_KEY)
+    if row is not None:
+        try:
+            letzte = datetime.fromisoformat(json.loads(row.value)["zeit"])
+        except (ValueError, KeyError, TypeError):
+            letzte = None
+        if letzte is not None and letzte >= termin:
+            return {"erlaubt": False}
+
+    stand = json.dumps({"matchday": payload.matchday, "zeit": jetzt.isoformat()})
+    if row is None:
+        db.add(models.Setting(key=KICKER_IMPORT_STAND_KEY, value=stand))
+    else:
+        row.value = stand
+    db.commit()
+
+    token = secrets.token_urlsafe(24)
+    _letzte_freigabe = time.time()
+    _auto_freigabe = (token, _letzte_freigabe + AUTO_GUELTIG_SEKUNDEN)
+    return {"erlaubt": True, "token": token}
 
 
 @app.get("/api/kicker/aufstellungen/{matchday}", dependencies=[Depends(passwort_verlangen)])

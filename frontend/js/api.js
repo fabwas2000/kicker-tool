@@ -26,6 +26,9 @@ window.KT = window.KT || {};
   var aufwachenSeit = 0;
   var hinweisTimer = null;
 
+  // Freigabe fuer den automatischen Import, siehe autoAufstellungen.js.
+  var autoToken = null;
+
   function aufwachenBeginnt() {
     if (aufwachenSeit) return;
     aufwachenSeit = Date.now();
@@ -57,6 +60,9 @@ window.KT = window.KT || {};
     // Nur bei aendernden Anfragen: Lesen ist ohne Passwort erlaubt, damit man
     // die Seite auch ohne Eingabe ansehen kann. Ausnahme: lesende Endpunkte,
     // die das Backend trotzdem nur Angemeldeten gibt (options.mitPasswort).
+    // Waehrend eines automatischen Imports: die Freigabe vom Server, die auch
+    // ohne Passwort Kader und Aufstellungen speichern laesst.
+    if (autoToken) init.headers["X-Kicker-Auto"] = autoToken;
     if (SCHREIB_METHODEN[method] || options.mitPasswort) {
       var passwort = KT.config.getPasswort();
       if (passwort) init.headers["X-Kicker-Passwort"] = passwort;
@@ -169,9 +175,20 @@ window.KT = window.KT || {};
     getKickerAufstellungen: function (matchday) {
       return request("/api/kicker/aufstellungen/" + matchday, { mitPasswort: true });
     },
-    /** Wann zuletzt Aufstellungen uebernommen wurden: {matchday, zeit} (beides ggf. null). */
-    getKickerImportStand: function () {
-      return request("/api/kicker/aufstellungen-stand");
+    /**
+     * Fragt, ob zur Anstosszeit `termin` (Date) ein automatischer Import
+     * ansteht. Antwort {erlaubt, token} - der Server vermerkt den Lauf dabei
+     * gleich, nur die erste Seite nach dem Anstoss bekommt ihn.
+     */
+    autoFreigabe: function (matchday, termin) {
+      return request("/api/kicker/auto-freigabe", {
+        method: "POST",
+        body: JSON.stringify({ matchday: matchday, termin: termin.toISOString() }),
+      });
+    },
+    /** Freigabe fuer die folgenden Anfragen setzen bzw. mit null wieder entfernen. */
+    setAutoToken: function (token) {
+      autoToken = token || null;
     },
     saveKickerImportStand: function (matchday) {
       return request("/api/kicker/aufstellungen-stand", {
