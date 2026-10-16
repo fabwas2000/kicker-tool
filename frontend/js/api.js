@@ -160,6 +160,10 @@ window.KT = window.KT || {};
     getGrades: function (matchday) {
       return request("/api/grades/" + matchday);
     },
+    /** Fingerabdruck je Spieltag, siehe Gesamtwertung in views/live.js. */
+    getPunkteStand: function () {
+      return request("/api/punkte-stand");
+    },
     saveGrades: function (matchday, grades) {
       return request("/api/grades/" + matchday, {
         method: "PUT",

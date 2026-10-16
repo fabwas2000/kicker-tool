@@ -1,5 +1,6 @@
 import base64
 import binascii
+import hashlib
 import hmac
 import json
 import os
@@ -705,3 +706,89 @@ def get_all_lineups_for_matchday(matchday: int, db: Session = Depends(get_db)):
             )
         )
     return result
+
+
+def _fingerabdruck(daten) -> str:
+    roh = json.dumps(daten, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(roh.encode()).hexdigest()[:16]
+
+
+@app.get("/api/punkte-stand")
+def punkte_stand(db: Session = Depends(get_db)):
+    """Fingerabdruck je Spieltag ueber alles, was dessen Punkte beeinflusst.
+
+    Die Gesamtwertung speichert die Punkte beendeter Spieltage im Browser und
+    rechnet einen Spieltag nur neu, wenn sich sein Fingerabdruck geaendert
+    hat - statt bei jedem Oeffnen alle Spieltage komplett neu zu laden.
+
+    Bewusst ein Hash ueber den Inhalt statt Zeitstempeln: Noten haben keinen,
+    geloeschte Zeilen hinterlassen keinen, und der automatische kicker-Import
+    schreibt Kader zu jeder Anstosszeit neu, meist mit identischem Inhalt.
+
+    `basis` deckt ab, was fuer alle Spieltage gilt (Konkurrenten, Regeln),
+    `spieltage` den Rest je Spieltag. Spieltage ohne Aufstellung und ohne
+    Note fehlen dort.
+    """
+    basis = _fingerabdruck(
+        {
+            "konkurrenten": [
+                list(r)
+                for r in db.execute(
+                    select(models.Competitor.id, models.Competitor.name).order_by(models.Competitor.id)
+                )
+            ],
+            "regeln": get_scoring_rules(db),
+        }
+    )
+
+    # Nur die Position der tatsaechlich aufgestellten Spieler zaehlt (sie
+    # bestimmt die Torpunkte). Wer den Kader umbaut, ohne jemanden aus einer
+    # alten Aufstellung anzufassen, macht so keinen Spieltag ungueltig.
+    positionen = {
+        (cid, pid): pos
+        for cid, pid, pos in db.execute(
+            select(
+                models.SquadPlayer.competitor_id,
+                models.SquadPlayer.espn_player_id,
+                models.SquadPlayer.position,
+            )
+        )
+    }
+
+    spieltage: dict[int, dict[str, list]] = {}
+
+    def spieltag(nummer: int) -> dict[str, list]:
+        return spieltage.setdefault(nummer, {"aufstellungen": [], "noten": []})
+
+    # Outer join: auch eine Aufstellung ohne Spieler zaehlt ("hat aufgestellt").
+    for cid, nummer, slot, pid in db.execute(
+        select(
+            models.Lineup.competitor_id,
+            models.Lineup.matchday,
+            models.LineupPlayer.slot,
+            models.LineupPlayer.espn_player_id,
+        ).outerjoin(models.LineupPlayer, models.LineupPlayer.lineup_id == models.Lineup.id)
+    ):
+        spieltag(nummer)["aufstellungen"].append([cid, slot, pid, positionen.get((cid, pid))])
+
+    for g in db.scalars(select(models.PlayerGrade)):
+        spieltag(g.matchday)["noten"].append(
+            [
+                g.espn_player_id,
+                g.grade,
+                g.no_grade,
+                g.goals,
+                g.assists,
+                g.player_of_match,
+                g.red_card_override,
+            ]
+        )
+
+    for daten in spieltage.values():
+        for liste in daten.values():
+            liste.sort(key=str)  # Reihenfolge aus der Datenbank ist nicht garantiert
+
+    return {
+        "basis": basis,
+        "spieltage": {str(n): _fingerabdruck(d) for n, d in spieltage.items()},
+    }

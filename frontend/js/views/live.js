@@ -1086,14 +1086,57 @@ window.KT.views = window.KT.views || {};
     // Gesamtwertung ueber alle bereits angepfiffenen Spieltage
     // ------------------------------------------------------------------
 
+    // Punkte beendeter Spieltage je Konkurrent, damit die Gesamtwertung nicht
+    // jedes Mal alle Spieltage komplett neu laden muss. Je Spieltag:
+    //   { stand: "<basis>/<spieltag>", punkte: [{competitorId, competitorName,
+    //     total, hasLineup}] }
+    // `stand` ist der Fingerabdruck vom Backend (/api/punkte-stand). Weicht er
+    // ab, hat sich nachtraeglich etwas geaendert (Note, Aufstellung, Position,
+    // Regel ...) und der Spieltag wird neu gerechnet. Aendert sich die
+    // Wertungslogik hier im Code, die Versionsnummer im Schluessel erhoehen.
+    var PUNKTE_CACHE_KEY = "kicker-tool:spieltagspunkte:v1";
+
+    function punkteCacheLesen() {
+      try {
+        return JSON.parse(KT.config.safeGet(PUNKTE_CACHE_KEY) || "{}") || {};
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function punkteCacheSchreiben(cache) {
+      KT.config.safeSet(PUNKTE_CACHE_KEY, JSON.stringify(cache));
+    }
+
+    /** Fingerabdruck eines Spieltags - null, wenn das Backend keinen liefert. */
+    function standFuer(stand, nummer) {
+      if (!stand) return null;
+      return stand.basis + "/" + ((stand.spieltage || {})[nummer] || "-");
+    }
+
     /**
-     * Laedt jeden begonnenen Spieltag und addiert die Punkte je Konkurrent.
+     * Darf das Ergebnis gespeichert werden? Nur wenn alle Spiele wirklich
+     * beendet sind - laufende Spiele aendern sich ja noch, und die ESPN-Daten
+     * gehoeren NICHT zum Fingerabdruck. Abgesagte Spiele sind bei ESPN "post",
+     * aber nicht "completed"; solche Spieltage werden also weiter geladen.
+     */
+    function spieltagAbgeschlossen(bundle) {
+      return !bundle.backendError &&
+        bundle.events.length > 0 &&
+        bundle.events.every(function (e) {
+          return e.state === "post" && e.completed;
+        });
+    }
+
+    /**
+     * Addiert die Punkte je Konkurrent ueber alle begonnenen Spieltage.
      *
-     * Die einzelnen Spieltage kommen fast alle aus dem Cache - beendete
-     * Spiele liegen dauerhaft im localStorage. Trotzdem bewusst NACHEINANDER
-     * geladen und nicht per Promise.all: Spieltage ohne Cache loesen je ein
-     * Dutzend ESPN-Abrufe aus, und ESPN drosselt unter paralleler Last.
-     * Dafuer sieht man beim Warten, wie weit es ist.
+     * Beendete Spieltage kommen aus dem Punkte-Cache, solange ihr Fingerabdruck
+     * passt - dann kostet die ganze Gesamtwertung nur eine Backend-Anfrage.
+     * Alle anderen werden komplett geladen, und zwar bewusst NACHEINANDER und
+     * nicht per Promise.all: Spieltage ohne ESPN-Cache loesen je ein Dutzend
+     * ESPN-Abrufe aus, und ESPN drosselt unter paralleler Last. Dafuer sieht
+     * man beim Warten, wie weit es ist.
      */
     function gesamtLaden() {
       // Welche Spieltage zaehlen mit? NICHT ueber statusOf() bestimmt: der
@@ -1115,30 +1158,62 @@ window.KT.views = window.KT.views || {};
       }
 
       var summen = {};
-      var kette = Promise.resolve();
+      function addieren(nummer, punkte) {
+        punkte.forEach(function (c) {
+          var s = summen[c.competitorId] || (summen[c.competitorId] = {
+            competitorId: c.competitorId,
+            competitorName: c.competitorName,
+            total: 0,
+            spieltage: [],
+          });
+          // Der Name kann sich geaendert haben - der zuletzt gesehene
+          // (also der vom juengsten Spieltag) gewinnt.
+          s.competitorName = c.competitorName;
+          s.total += c.total;
+          s.spieltage.push({ nummer: nummer, punkte: c.total, hasLineup: c.hasLineup });
+        });
+      }
+
+      var cache = punkteCacheLesen();
+      bodyEl.innerHTML = '<p class="text-mute">Prüfe gespeicherte Punkte …</p>';
+      // Ohne Fingerabdruck (Backend alt oder nicht erreichbar) wird nichts aus
+      // dem Cache genommen - lieber langsam als mit veralteten Punkten.
+      var kette = KT.api.getPunkteStand().catch(function () {
+        return null;
+      });
       begonnen.forEach(function (md, i) {
-        kette = kette.then(function () {
+        kette = kette.then(function (stand) {
+          var soll = standFuer(stand, md.number);
+          var gespeichert = cache[md.number];
+          if (soll && gespeichert && gespeichert.stand === soll) {
+            addieren(md.number, gespeichert.punkte);
+            return stand;
+          }
+
           bodyEl.innerHTML = '<p class="text-mute">Lade Spieltag ' + md.number +
             " … (" + (i + 1) + "/" + begonnen.length + ")</p>";
           return KT.matchdayData.load(md.number).then(function (bundle) {
             if (bundle.backendError) throw new Error(bundle.backendError);
-            KT.scoring
+            var punkte = KT.scoring
               .computeMatchdayScores(
                 bundle.competitors, bundle.matchByPlayerId, bundle.manualByPlayerId, bundle.rules
               )
-              .forEach(function (c) {
-                var s = summen[c.competitorId] || (summen[c.competitorId] = {
+              .map(function (c) {
+                return {
                   competitorId: c.competitorId,
                   competitorName: c.competitorName,
-                  total: 0,
-                  spieltage: [],
-                });
-                // Der Name kann sich geaendert haben - der zuletzt gesehene
-                // (also der vom juengsten Spieltag) gewinnt.
-                s.competitorName = c.competitorName;
-                s.total += c.total;
-                s.spieltage.push({ nummer: md.number, punkte: c.total, hasLineup: c.hasLineup });
+                  total: c.total,
+                  hasLineup: c.hasLineup,
+                };
               });
+            addieren(md.number, punkte);
+            // Gleich speichern, nicht erst am Ende - bricht ein spaeterer
+            // Spieltag ab, ist die Arbeit fuer diesen hier nicht verloren.
+            if (soll && spieltagAbgeschlossen(bundle)) {
+              cache[md.number] = { stand: soll, punkte: punkte };
+              punkteCacheSchreiben(cache);
+            }
+            return stand;
           });
         });
       });
