@@ -209,11 +209,13 @@ window.KT.views = window.KT.views || {};
       return richtung ? " punkte-blitz punkte-blitz-" + richtung : "";
     }
 
-    function renderPlayerChip(entry, competitorId) {
+    /**
+     * Kurze Unterschrift zum Stand der Punktzahl eines Spielers (Startelf,
+     * Bank, live, Note ...). Gemeinsam genutzt von Spielfeld und
+     * Aufstellungs-Editor.
+     */
+    function statusZeile(entry) {
       var match = entry.match;
-      var badges = ereignisBadges(entry);
-      var punkteFarbe = punkteFarbeFuer(entry);
-
       var note = entry.grade !== null && entry.grade !== undefined
         ? Number(entry.grade).toFixed(1).replace(".", ",")
         : null;
@@ -268,6 +270,14 @@ window.KT.views = window.KT.views || {};
       } else {
         statusLine = '<span class="text-warn font-semibold">Note fehlt</span>';
       }
+
+      return statusLine;
+    }
+
+    function renderPlayerChip(entry, competitorId) {
+      var badges = ereignisBadges(entry);
+      var punkteFarbe = punkteFarbeFuer(entry);
+      var statusLine = statusZeile(entry);
 
       // Aufbau wie bei kicker: Foto im Hochformat, Ereignis-Symbole an der
       // oberen linken Ecke, die Zahl oben rechts, darunter nur der Nachname.
@@ -474,7 +484,14 @@ window.KT.views = window.KT.views || {};
       // elf. Deshalb steht unter dem Namen, wie weit der Spieltag fuer diesen
       // Konkurrenten gediehen ist.
       var aufgestellt = c.slots.length;
+      // "gespielt" zaehlt jeden, dessen Partie schon angepfiffen ist - auch
+      // wer auf der Bank sitzt. Die Zahl soll zeigen, wie viele Spieler noch
+      // Punkte sammeln KOENNEN, nicht wie viele eingesetzt wurden. Ohne
+      // Partie (Freilos) steht ebenfalls nichts mehr aus.
       var gespielt = c.slots.filter(function (s) {
+        return zeitZustand(fixtureForPlayer(s)) !== "ausstehend";
+      }).length;
+      var eingesetzt = c.slots.filter(function (s) {
         return s.played;
       }).length;
       var benotet = c.slots.filter(function (s) {
@@ -497,10 +514,10 @@ window.KT.views = window.KT.views || {};
       } else {
         unterzeile =
           "gespielt " + gespielt + "/" + aufgestellt +
-          " · benotet " + benotet + "/" + gespielt;
+          " · benotet " + benotet + "/" + eingesetzt;
         // Gelb nur nach Abpfiff: Waehrend gespielt wird, sind fehlende Noten
         // normal, es gibt ja noch keine.
-        unterzeileFarbe = istBeendet && benotet < gespielt ? "text-warn" : "text-mute";
+        unterzeileFarbe = istBeendet && benotet < eingesetzt ? "text-warn" : "text-mute";
       }
 
       // Die Zeile ist ein div mit Knopf-Rolle, kein <button>: die Live-Kacheln
@@ -1332,6 +1349,29 @@ window.KT.views = window.KT.views || {};
     // Punkte-Aufschluesselung eines Spielers
     // ------------------------------------------------------------------
 
+    /**
+     * Fuer den Aufstellungs-Editor: zu jedem Kaderspieler dieselben Angaben
+     * wie auf dem Spielfeld (S11/Bank, Tore, Vorlagen, Note, Punkte) - auch
+     * fuer die, die gerade NICHT aufgestellt sind. So sieht man, ob auf der
+     * Bank noch Punkte liegen.
+     */
+    function spielerInfoFuerEditor(bundle) {
+      return function (player) {
+        if (!bundle || !player) return null;
+        var entry = KT.scoring.playerEntry(
+          player.espn_player_id, player,
+          bundle.matchByPlayerId, bundle.manualByPlayerId, bundle.rules
+        );
+        return {
+          badgesHtml: ereignisBadges(entry).join(""),
+          statusHtml: statusZeile(entry),
+          points: entry.points,
+          punkteFarbe: punkteFarbeFuer(entry),
+          played: entry.played,
+        };
+      };
+    }
+
     function findSlotEntry(competitorId, slot) {
       var competitor = currentScores.filter(function (c) {
         return String(c.competitorId) === String(competitorId);
@@ -1520,6 +1560,7 @@ window.KT.views = window.KT.views || {};
           competitorId: editId,
           competitorName: editCompetitor ? editCompetitor.competitorName : "",
           matchday: currentBundle.matchday,
+          spielerInfo: spielerInfoFuerEditor(currentBundle),
           onSaved: function () {
             if (currentBundle) load(currentBundle.matchday);
           },

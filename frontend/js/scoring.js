@@ -141,6 +141,35 @@ window.KT = window.KT || {};
   }
 
   /**
+   * Alles, was die Anzeige ueber EINEN Spieler an diesem Spieltag braucht:
+   * Spieldaten, manuelle Eingaben und die daraus gerechneten Punkte. Gilt
+   * fuer aufgestellte Spieler genauso wie fuer die uebrigen Kaderspieler
+   * (Aufstellungs-Editor: "was haette er auf der Bank gehabt?").
+   */
+  function playerEntry(playerId, player, matchByPlayerId, manualByPlayerId, rules) {
+    var match = matchByPlayerId.get(playerId) || null;
+    var manual = manualByPlayerId.get(playerId) || null;
+    var result = playerPoints(player, match, manual, rules);
+    return {
+      slot: null,
+      playerId: playerId,
+      playerName: (player && player.name) || (match && match.playerName) || playerId,
+      position: player && player.position,
+      teamId: (player && player.espn_team_id) || (match && match.teamId) || null,
+      teamName: (player && player.team_name) || (match && match.teamName) || "",
+      match: match,
+      manual: manual,
+      grade: manual ? manual.grade : null,
+      // "-" (bewusst keine Note): grade bleibt null, aber die Note gilt
+      // trotzdem als eingetragen - anders als "noch gar nichts erfasst".
+      noGrade: Boolean(manual && manual.no_grade),
+      points: result.points,
+      parts: result.parts,
+      played: result.played,
+    };
+  }
+
+  /**
    * Wertung fuer alle Konkurrenten eines Spieltags.
    *
    * @param competitors [{competitorId, competitorName, lineup, squadById}]
@@ -156,28 +185,10 @@ window.KT = window.KT || {};
 
       lineupPlayers.forEach(function (lp) {
         var player = entry.squadById ? entry.squadById[lp.espn_player_id] : null;
-        var match = matchByPlayerId.get(lp.espn_player_id) || null;
-        var manual = manualByPlayerId.get(lp.espn_player_id) || null;
-        var result = playerPoints(player, match, manual, rules);
-        total += result.points;
-
-        slots.push({
-          slot: lp.slot,
-          playerId: lp.espn_player_id,
-          playerName: (player && player.name) || (match && match.playerName) || lp.espn_player_id,
-          position: player && player.position,
-          teamId: (player && player.espn_team_id) || (match && match.teamId) || null,
-          teamName: (player && player.team_name) || (match && match.teamName) || "",
-          match: match,
-          manual: manual,
-          grade: manual ? manual.grade : null,
-          // "-" (bewusst keine Note): grade bleibt null, aber die Note gilt
-          // trotzdem als eingetragen - anders als "noch gar nichts erfasst".
-          noGrade: Boolean(manual && manual.no_grade),
-          points: result.points,
-          parts: result.parts,
-          played: result.played,
-        });
+        var slot = playerEntry(lp.espn_player_id, player, matchByPlayerId, manualByPlayerId, rules);
+        slot.slot = lp.slot;
+        total += slot.points;
+        slots.push(slot);
       });
 
       return {
@@ -202,6 +213,7 @@ window.KT = window.KT || {};
     POSITION_LABEL: POSITION_LABEL,
     pointsForGrade: pointsForGrade,
     playerPoints: playerPoints,
+    playerEntry: playerEntry,
     computeMatchdayScores: computeMatchdayScores,
   };
 })(window.KT);

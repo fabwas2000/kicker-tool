@@ -13,11 +13,19 @@ window.KT = window.KT || {};
      * @param opts.competitorName
      * @param opts.matchday
      * @param opts.onSaved  function(lineup) - nach erfolgreichem Speichern
+     * @param opts.spielerInfo  optional function(player) -> {badgesHtml,
+     *        statusHtml, points, punkteFarbe, played} | null - Spieltagsdaten
+     *        (S11/Bank, Tore, Vorlagen, Note, Punkte) zu einem Kaderspieler,
+     *        damit man auch beim nicht aufgestellten Rest sieht, was er
+     *        geholt haette.
      */
     open: function (opts) {
       var escapeHtml = KT.ui.escapeHtml;
       var competitorId = opts.competitorId;
       var matchday = opts.matchday;
+      var spielerInfo = typeof opts.spielerInfo === "function" ? opts.spielerInfo : function () {
+        return null;
+      };
 
       var squad = [];
       var placements = new Map(); // slot -> espn_player_id
@@ -31,7 +39,7 @@ window.KT = window.KT || {};
       overlay.className =
         "fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-0 sm:p-4 overflow-y-auto";
       overlay.innerHTML = [
-        '<div class="bg-panel border border-line w-full sm:max-w-4xl shadow-[0_6px_24px_rgba(0,0,0,0.6)] my-0 sm:my-8" data-panel>',
+        '<div class="bg-panel border border-line w-full sm:max-w-5xl shadow-[0_6px_24px_rgba(0,0,0,0.6)] my-0 sm:my-8" data-panel>',
         '  <div class="flex items-center justify-between gap-3 p-4 border-b-2 border-ink">',
         "    <div>",
         '      <h2 class="font-display text-2xl font-bold uppercase tracking-tight leading-none">Aufstellung</h2>',
@@ -56,11 +64,11 @@ window.KT = window.KT || {};
         "      </button>",
         '      <button id="le-copy" class="kt-btn kt-btn-secondary hidden"></button>',
         "    </div>",
-        '    <div class="grid gap-6 md:grid-cols-[2fr_1fr] items-start">',
+        '    <div class="grid gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">',
         '      <div id="le-pitch" class="pitch relative w-full aspect-[3/4] max-h-[60vh] overflow-hidden"></div>',
         "      <div>",
-        '        <h3 class="kt-eyebrow mb-2">Bank <span id="le-bench-count" class="normal-case tracking-normal"></span></h3>',
-        '        <ul id="le-bench-list" class="kt-panel max-h-[50vh] overflow-y-auto"></ul>',
+        '        <h3 class="kt-eyebrow mb-2">Übriger Kader <span id="le-bench-count" class="normal-case tracking-normal"></span></h3>',
+        '        <ul id="le-bench-list" class="kt-panel max-h-[60vh] overflow-y-auto"></ul>',
         "      </div>",
         "    </div>",
         "  </div>",
@@ -136,18 +144,30 @@ window.KT = window.KT || {};
               "</div>"
             );
           }
-          // Wie bei kicker: Foto im Hochformat, darunter nur der Nachname.
+          // Wie bei kicker: Foto im Hochformat, darunter nur der Nachname -
+          // plus, wenn Spieltagsdaten da sind, dieselben Symbole, Punkte und
+          // Unterschrift wie im Punkte-Spielfeld.
+          var info = spielerInfo(player);
           return [
             '<div draggable="true" data-source="slot" data-chip-slot="' + s.slot + '" data-player="' + player.espn_player_id + '"',
             '  class="relative flex flex-col items-center w-full cursor-grab">',
             '  <div class="relative">',
             "    " + KT.images.avatarHtml(player.espn_player_id, player.name, "pitch-photo", false),
+            info && info.badgesHtml
+              ? '    <div class="absolute -top-1 -left-1 leading-none text-[9px] bg-[#0c0c0c]/90 rounded-sm px-0.5 py-px whitespace-nowrap">' +
+                info.badgesHtml + "</div>"
+              : "",
+            info
+              ? '    <span class="absolute bottom-0.5 right-0.5 text-[9px] font-bold tabular-nums leading-none ' +
+                'bg-[#0c0c0c]/90 rounded-sm px-1 py-0.5 ' + info.punkteFarbe + '">' + info.points + "</span>"
+              : "",
             '    <button data-remove-slot="' + s.slot + '" title="Von dieser Position nehmen"',
             '      class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-panel text-kicker text-[10px]',
             '             leading-none ring-1 ring-line hover:bg-kicker hover:text-white">×</button>',
             "  </div>",
             '  <div class="pitch-name mt-1 font-semibold text-ink text-center max-w-full truncate">' +
               escapeHtml(KT.ui.lastName(player.name)) + "</div>",
+            info ? '  <div class="pitch-status max-w-full truncate">' + info.statusHtml + "</div>" : "",
             "</div>",
           ].join("\n");
         });
@@ -173,15 +193,26 @@ window.KT = window.KT || {};
           .sort(KT.ui.comparePlayers)
           .map(function (p) {
             var selected = selectedBenchId === p.espn_player_id;
+            var info = spielerInfo(p);
+            var verein = escapeHtml(KT.vereine.name(p.espn_team_id, p.team_name));
             return [
               '<li draggable="true" data-source="bench" data-player="' + p.espn_player_id + '"',
               '  class="player-chip kt-row flex items-center gap-2 px-3 py-2 text-sm cursor-grab ' +
                 (selected ? "bg-kicker-soft ring-1 ring-inset ring-kicker" : "bg-panel kt-hover") + '">',
               "  " + KT.images.avatarHtml(p.espn_player_id, p.name, "w-8 h-8"),
               '  <span class="w-6 text-center text-[10px] font-semibold uppercase text-mute">' + escapeHtml(p.position) + "</span>",
-              '  <span class="flex-1 font-medium text-ink">' + escapeHtml(p.name) + "</span>",
-              '  <span class="text-mute text-xs">' +
-                escapeHtml(KT.vereine.name(p.espn_team_id, p.team_name)) + "</span>",
+              '  <span class="flex-1 min-w-0">',
+              '    <span class="block font-medium text-ink truncate">' + escapeHtml(p.name) + "</span>",
+              '    <span class="block text-xs text-mute truncate">' + verein +
+                (info ? " · " + info.statusHtml : "") + "</span>",
+              "  </span>",
+              info && info.badgesHtml
+                ? '  <span class="shrink-0 text-[11px] leading-none whitespace-nowrap">' + info.badgesHtml + "</span>"
+                : "",
+              info
+                ? '  <span class="shrink-0 w-8 text-right font-bold tabular-nums ' + info.punkteFarbe + '"' +
+                  ' title="Punkte an diesem Spieltag">' + info.points + "</span>"
+                : "",
               "</li>",
             ].join("\n");
           })
