@@ -274,7 +274,12 @@ window.KT.views = window.KT.views || {};
       return statusLine;
     }
 
-    function renderPlayerChip(entry, competitorId) {
+    /**
+     * @param entfernenSlot  nur im Bearbeitungsmodus: Position, von der das
+     *        "x" den Spieler nimmt. Sonst ist die Kachel der Weg zur
+     *        Punkte-Aufschluesselung.
+     */
+    function renderPlayerChip(entry, competitorId, entfernenSlot) {
       var badges = ereignisBadges(entry);
       var punkteFarbe = punkteFarbeFuer(entry);
       var statusLine = statusZeile(entry);
@@ -283,8 +288,11 @@ window.KT.views = window.KT.views || {};
       // oberen linken Ecke, die Zahl oben rechts, darunter nur der Nachname.
       // Auf dem dunklen Rasen braucht der Name keine eigene Flaeche mehr.
       return [
-        '<div class="flex flex-col items-center w-full cursor-pointer" ' +
-          'title="' + escapeHtml(entry.playerName) + ' – für die Punkte-Aufschlüsselung antippen">',
+        entfernenSlot
+          ? '<div class="flex flex-col items-center w-full" title="' + escapeHtml(entry.playerName) +
+            ' – ziehen zum Verschieben">'
+          : '<div class="flex flex-col items-center w-full cursor-pointer" ' +
+            'title="' + escapeHtml(entry.playerName) + ' – für die Punkte-Aufschlüsselung antippen">',
         '  <div class="relative' + blitzKlasse(competitorId, entry.slot) + '">',
         "    " + KT.images.avatarHtml(entry.playerId, entry.playerName, "pitch-photo", false),
         badges.length
@@ -293,6 +301,13 @@ window.KT.views = window.KT.views || {};
           : "",
         '    <div class="pitch-points absolute -top-1 -right-1 tabular-nums ' + punkteFarbe + '">' +
           entry.points + "</div>",
+        // Unten rechts, damit oben rechts die Punkte stehen bleiben wie
+        // ausserhalb des Bearbeitungsmodus.
+        entfernenSlot
+          ? '    <button data-remove-slot="' + entfernenSlot + '" title="Von dieser Position nehmen"' +
+            ' class="absolute -bottom-1.5 -right-1.5 w-4 h-4 rounded-full bg-panel text-kicker text-[10px]' +
+            ' leading-none ring-1 ring-line hover:bg-kicker hover:text-white">×</button>'
+          : "",
         "  </div>",
         '  <div class="pitch-name mt-1 font-semibold text-ink text-center max-w-full truncate">' +
           escapeHtml(KT.ui.lastName(entry.playerName)) + "</div>",
@@ -475,6 +490,128 @@ window.KT.views = window.KT.views || {};
       ].join("\n");
     }
 
+    /** Kaderdaten eines Konkurrenten aus dem geladenen Spieltag. */
+    function kaderVon(competitorId) {
+      var comp = ((currentBundle && currentBundle.competitors) || []).filter(function (x) {
+        return String(x.competitorId) === String(competitorId);
+      })[0];
+      var byId = (comp && comp.squadById) || {};
+      return Object.keys(byId).map(function (k) { return byId[k]; });
+    }
+
+    /** Spieltagsdaten (Punkte, Ereignisse) zu einem beliebigen Kaderspieler. */
+    function kaderEintrag(player) {
+      return KT.scoring.playerEntry(
+        player.espn_player_id, player,
+        currentBundle.matchByPlayerId, currentBundle.manualByPlayerId, currentBundle.rules
+      );
+    }
+
+    /**
+     * Eine Zeile im uebrigen Kader: dieselben Angaben wie auf dem Spielfeld
+     * (S11/Bank, Tore, Vorlagen, Note, Punkte) - so sieht man, ob auf der
+     * Bank noch Punkte gelegen haetten.
+     *
+     * @param bearbeiten  true im Bearbeitungsmodus: Zeile ist ziehbar und
+     *        auswaehlbar statt der Weg zur Punkte-Aufschluesselung.
+     */
+    function renderKaderZeile(entry, competitorId, bearbeiten, ausgewaehlt) {
+      var badges = ereignisBadges(entry);
+      var verein = escapeHtml(KT.vereine.name(entry.teamId, entry.teamName));
+      var attrs = bearbeiten
+        ? 'draggable="true" data-source="bench" data-player="' + escapeHtml(entry.playerId) + '"'
+        : 'data-kader-player="' + competitorId + ":" + escapeHtml(entry.playerId) + '"';
+      var klasse = "kt-row flex items-center gap-2 px-3 py-2 text-sm " +
+        (bearbeiten ? "cursor-grab " : "cursor-pointer ") +
+        (ausgewaehlt ? "bg-kicker-soft ring-1 ring-inset ring-kicker" : "bg-panel kt-hover");
+      return [
+        "<li " + attrs + ' class="' + klasse + '">',
+        "  " + KT.images.avatarHtml(entry.playerId, entry.playerName, "w-8 h-8"),
+        '  <span class="w-6 text-center text-[10px] font-semibold uppercase text-mute">' +
+          escapeHtml(entry.position || "") + "</span>",
+        '  <span class="flex-1 min-w-0">',
+        '    <span class="block font-medium text-ink truncate">' + escapeHtml(entry.playerName) + "</span>",
+        '    <span class="block text-xs text-mute truncate">' + verein + " · " + statusZeile(entry) + "</span>",
+        "  </span>",
+        badges.length
+          ? '  <span class="shrink-0 text-[11px] leading-none whitespace-nowrap">' + badges.join("") + "</span>"
+          : "",
+        '  <span class="shrink-0 w-8 text-right font-bold tabular-nums ' + punkteFarbeFuer(entry) + '"' +
+          ' title="Punkte an diesem Spieltag">' + entry.points + "</span>",
+        "</li>",
+      ].join("");
+    }
+
+    /** Lesefassung des uebrigen Kaders (alle, die nicht aufgestellt sind). */
+    function restkaderHtml(c) {
+      var aufgestellt = new Set(c.slots.map(function (s) { return s.playerId; }));
+      var rest = kaderVon(c.competitorId).filter(function (p) {
+        return !aufgestellt.has(p.espn_player_id);
+      });
+      if (!rest.length) {
+        return '<li class="text-mute text-sm px-3 py-3">' +
+          (aufgestellt.size ? "Alle Kaderspieler sind aufgestellt." : "Kein Kader angelegt.") + "</li>";
+      }
+      return rest
+        .sort(KT.ui.comparePlayers)
+        .map(function (p) { return renderKaderZeile(kaderEintrag(p), c.competitorId, false, false); })
+        .join("");
+    }
+
+    // ------------------------------------------------------------------
+    // Bearbeitungsmodus (in der ausgeklappten Zeile)
+    // ------------------------------------------------------------------
+
+    // Laufender Editor: {competitorId, controller}. Ueberlebt das Neuzeichnen
+    // beim Live-Nachladen - sein DOM-Knoten wird einfach wieder eingesetzt.
+    var bearbeitung = null;
+
+    function bearbeitungBeenden() {
+      if (!bearbeitung) return;
+      bearbeitung.controller.destroy();
+      bearbeitung = null;
+    }
+
+    function bearbeitungStarten(competitorId) {
+      bearbeitungBeenden();
+      var c = currentScores.filter(function (x) {
+        return String(x.competitorId) === String(competitorId);
+      })[0];
+      if (!c || !currentBundle) return;
+      var matchday = currentBundle.matchday;
+      var controller = KT.lineupEditor.mount({
+        competitorId: c.competitorId,
+        matchday: matchday,
+        squad: kaderVon(c.competitorId),
+        formation: c.formation,
+        players: c.slots.map(function (s) { return { slot: s.slot, espn_player_id: s.playerId }; }),
+        chipHtml: function (player, slot) {
+          var entry = kaderEintrag(player);
+          entry.slot = slot;
+          return renderPlayerChip(entry, c.competitorId, slot);
+        },
+        zeileHtml: function (player, ausgewaehlt) {
+          return renderKaderZeile(kaderEintrag(player), c.competitorId, true, ausgewaehlt);
+        },
+        onCancel: function () {
+          bearbeitungBeenden();
+          if (currentBundle) render(currentBundle);
+        },
+        onSaved: function () {
+          bearbeitungBeenden();
+          // Still nachladen statt "Lade Spieltag ..." - die Zeile bleibt
+          // offen und zeigt gleich die neue Aufstellung.
+          KT.matchdayData.load(matchday).then(function (neu) {
+            if (currentBundle && currentBundle.matchday === matchday) render(neu);
+          }).catch(function () {
+            if (currentBundle) render(currentBundle);
+          });
+        },
+      });
+      bearbeitung = { competitorId: c.competitorId, controller: controller };
+      render(currentBundle);
+    }
+
     function renderCompetitorCard(c, rank, istBeendet) {
       var wrapperId = "pitch-" + c.competitorId;
       var isOpen = expanded.has(c.competitorId);
@@ -499,9 +636,9 @@ window.KT.views = window.KT.views || {};
         return s.played && ((s.grade !== null && s.grade !== undefined) || s.noGrade);
       }).length;
 
-      // Der Nenner bei "benotet" ist bewusst die Zahl der EINGESETZTEN, nicht
-      // der aufgestellten Spieler: Wer nicht gespielt hat, kann keine Note
-      // bekommen. "3/11" liesse eine Luecke vermuten, die es gar nicht gibt.
+      // Der Nenner bei "benotet" ist derselbe wie bei "gespielt" (Partie
+      // angepfiffen). Gelb wird es aber nur, wenn einem EINGESETZTEN Spieler
+      // die Note fehlt - wer auf der Bank sass, bekommt ja keine.
       var unterzeile, unterzeileFarbe;
       if (!c.hasLineup) {
         unterzeile = "keine Aufstellung";
@@ -514,7 +651,7 @@ window.KT.views = window.KT.views || {};
       } else {
         unterzeile =
           "gespielt " + gespielt + "/" + aufgestellt +
-          " · benotet " + benotet + "/" + eingesetzt;
+          " · benotet " + benotet + "/" + gespielt;
         // Gelb nur nach Abpfiff: Waehrend gespielt wird, sind fehlende Noten
         // normal, es gibt ja noch keine.
         unterzeileFarbe = istBeendet && benotet < eingesetzt ? "text-warn" : "text-mute";
@@ -549,12 +686,22 @@ window.KT.views = window.KT.views || {};
       ].join("\n");
 
       var body = "";
-      if (isOpen) {
+      if (isOpen && bearbeitung && bearbeitung.competitorId === c.competitorId) {
+        // Platzhalter: render() setzt hier den laufenden Editor wieder ein.
+        body = '<div class="border-t border-line bg-wash p-3" data-editor-host="' + c.competitorId + '"></div>';
+      } else if (isOpen) {
+        var L = KT.lineupEditor.LAYOUT;
         body = [
           '<div class="border-t border-line bg-wash p-3">',
+          '  <div class="' + L.grid + '">',
           c.hasLineup
-            ? '  <div id="' + wrapperId + '" class="pitch pitch-compact relative w-full max-w-lg mx-auto aspect-[3/4] overflow-hidden"></div>'
-            : '  <p class="text-mute text-sm text-center mb-2">Noch keine Aufstellung für diesen Spieltag.</p>',
+            ? '    <div id="' + wrapperId + '" class="' + L.pitch + '"></div>'
+            : '    <p class="text-mute text-sm text-center py-6">Noch keine Aufstellung für diesen Spieltag.</p>',
+          "    <div>",
+          "      " + KT.lineupEditor.kopfzeileHtml(c.slots.length),
+          '      <ul class="' + L.list + '">' + restkaderHtml(c) + "</ul>",
+          "    </div>",
+          "  </div>",
           // Ohne Anmeldung gar nicht erst anbieten: Der Editor wuerde sich
           // oeffnen lassen, aber jedes Speichern am Passwortschutz des
           // Backends scheitern - erst nach getaner Arbeit.
@@ -986,6 +1133,7 @@ window.KT.views = window.KT.views || {};
         " Partien beendet · Stand " + new Date().toLocaleTimeString("de-DE");
 
       if (bundle.backendError) {
+        bearbeitungBeenden();
         bodyEl.innerHTML = '<p class="text-kicker mb-4">' + escapeHtml(bundle.backendError) + "</p>" +
           renderMatchList(bundle.events);
         return;
@@ -1017,6 +1165,19 @@ window.KT.views = window.KT.views || {};
         "</div>" +
         renderMatchList(bundle.events);
 
+      // Laufende Bearbeitung wieder einsetzen - mit frischen Live-Daten in
+      // den Kacheln, aber ohne die ungespeicherten Aenderungen zu verlieren.
+      if (bearbeitung) {
+        var host = bodyEl.querySelector('[data-editor-host="' + bearbeitung.competitorId + '"]');
+        if (host) {
+          host.appendChild(bearbeitung.controller.el);
+          bearbeitung.controller.refresh();
+        } else {
+          // Zeile zugeklappt oder Konkurrent weg: Bearbeitung verwerfen.
+          bearbeitungBeenden();
+        }
+      }
+
       // Spielfelder befuellen (erst nachdem die Container im DOM sind)
       scores.forEach(function (c) {
         if (!c.hasLineup) return;
@@ -1043,6 +1204,7 @@ window.KT.views = window.KT.views || {};
     // ------------------------------------------------------------------
 
     function load(matchday) {
+      bearbeitungBeenden();
       bodyEl.innerHTML = '<p class="text-mute">Lade Spieltag ' + matchday + "…</p>";
       gesamtStand = null;
       KT.config.setStoredMatchday(matchday);
@@ -1338,6 +1500,7 @@ window.KT.views = window.KT.views || {};
       if (!istGesamt) return load(Number(wert));
 
       clearInterval(pollTimer);
+      bearbeitungBeenden();
       bodyEl.innerHTML = '<p class="text-mute">Lade Gesamtwertung…</p>';
       return gesamtLaden().catch(function (err) {
         bodyEl.innerHTML = '<p class="text-kicker">Konnte die Gesamtwertung nicht bilden: ' +
@@ -1348,29 +1511,6 @@ window.KT.views = window.KT.views || {};
     // ------------------------------------------------------------------
     // Punkte-Aufschluesselung eines Spielers
     // ------------------------------------------------------------------
-
-    /**
-     * Fuer den Aufstellungs-Editor: zu jedem Kaderspieler dieselben Angaben
-     * wie auf dem Spielfeld (S11/Bank, Tore, Vorlagen, Note, Punkte) - auch
-     * fuer die, die gerade NICHT aufgestellt sind. So sieht man, ob auf der
-     * Bank noch Punkte liegen.
-     */
-    function spielerInfoFuerEditor(bundle) {
-      return function (player) {
-        if (!bundle || !player) return null;
-        var entry = KT.scoring.playerEntry(
-          player.espn_player_id, player,
-          bundle.matchByPlayerId, bundle.manualByPlayerId, bundle.rules
-        );
-        return {
-          badgesHtml: ereignisBadges(entry).join(""),
-          statusHtml: statusZeile(entry),
-          points: entry.points,
-          punkteFarbe: punkteFarbeFuer(entry),
-          played: entry.played,
-        };
-      };
-    }
 
     function findSlotEntry(competitorId, slot) {
       var competitor = currentScores.filter(function (c) {
@@ -1520,6 +1660,24 @@ window.KT.views = window.KT.views || {};
     document.addEventListener("keydown", onKeydown);
 
     bodyEl.addEventListener("click", function (e) {
+      // Im Bearbeitungsmodus kuemmert sich der Editor selbst um Klicks -
+      // sonst oeffnete ein Tipp aufs Feld die Punkte-Aufschluesselung.
+      if (e.target.closest("[data-lineup-editor]")) return;
+
+      // Zeile im uebrigen Kader: Aufschluesselung wie auf dem Spielfeld.
+      var kaderZeile = e.target.closest("[data-kader-player]");
+      if (kaderZeile) {
+        var kt = kaderZeile.dataset.kaderPlayer.split(":");
+        var kComp = currentScores.filter(function (c) {
+          return String(c.competitorId) === String(kt[0]);
+        })[0];
+        var kPlayer = kaderVon(kt[0]).filter(function (p) {
+          return p.espn_player_id === kt.slice(1).join(":");
+        })[0];
+        if (kPlayer && currentBundle) openDetail(kaderEintrag(kPlayer), kComp ? kComp.competitorName : "");
+        return;
+      }
+
       // Aus der Gesamtwertung in einen einzelnen Spieltag springen.
       var gotoBtn = e.target.closest("[data-goto-md]");
       if (gotoBtn) {
@@ -1552,19 +1710,7 @@ window.KT.views = window.KT.views || {};
 
       var editBtn = e.target.closest("[data-edit-lineup]");
       if (editBtn) {
-        var editId = editBtn.dataset.editLineup;
-        var editCompetitor = currentScores.filter(function (c) {
-          return String(c.competitorId) === String(editId);
-        })[0];
-        KT.lineupEditor.open({
-          competitorId: editId,
-          competitorName: editCompetitor ? editCompetitor.competitorName : "",
-          matchday: currentBundle.matchday,
-          spielerInfo: spielerInfoFuerEditor(currentBundle),
-          onSaved: function () {
-            if (currentBundle) load(currentBundle.matchday);
-          },
-        });
+        bearbeitungStarten(editBtn.dataset.editLineup);
         return;
       }
 

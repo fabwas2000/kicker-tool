@@ -89,13 +89,12 @@ window.KT = window.KT || {};
           });
         });
 
-        // Kader nur fuer Konkurrenten laden, die auch aufgestellt haben -
-        // daraus kommen Position und Name fuer die Wertung.
-        var withLineup = rawLineups.filter(function (r) {
-          return r.lineup;
-        });
+        // Kader ALLER Konkurrenten laden: daraus kommen Position und Name
+        // fuer die Wertung, und die Punkte-Ansicht zeigt neben der
+        // Aufstellung auch den uebrigen Kader (auch ohne Aufstellung).
+        var alleKonkurrenten = rawLineups;
         return Promise.all(
-          withLineup.map(function (r) {
+          alleKonkurrenten.map(function (r) {
             return KT.api.getSquad(r.competitor_id).catch(function () {
               return [];
             });
@@ -106,7 +105,7 @@ window.KT = window.KT || {};
           // Position (kicker), um Punkte auch fuer Spieler zu zeigen, die
           // gerade nicht aufgestellt sind.
           bundle.squadPlayerById = {};
-          withLineup.forEach(function (r, i) {
+          alleKonkurrenten.forEach(function (r, i) {
             var map = {};
             squads[i].forEach(function (p) {
               map[p.espn_player_id] = p;

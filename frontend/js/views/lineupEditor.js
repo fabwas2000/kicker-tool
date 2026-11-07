@@ -1,113 +1,101 @@
 window.KT = window.KT || {};
 
 /**
- * Aufstellungs-Editor als Overlay (kein eigener Tab mehr) - wird von der
- * Spieltag-Ansicht aus für einen einzelnen Konkurrenten geöffnet.
+ * Bearbeitungsmodus fuer die Aufstellung eines Konkurrenten - direkt in der
+ * ausgeklappten Zeile der Punkte-Ansicht, kein eigenes Fenster. Die Ansicht
+ * bleibt dieselbe (Spielfeld links, uebriger Kader rechts); Kacheln und
+ * Zeilen zeichnet die Punkte-Ansicht selbst (opts.chipHtml/opts.zeileHtml),
+ * damit beide Zustaende genau gleich aussehen. Der Editor kuemmert sich nur
+ * um Verschieben, Formation und Speichern.
  */
 (function (KT) {
   "use strict";
 
+  // Gemeinsames Geruest: die Punkte-Ansicht baut ihre Lesefassung aus
+  // denselben Klassen, damit sich beim Umschalten nichts verschiebt.
+  var LAYOUT = {
+    grid: "grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start",
+    pitch: "pitch pitch-compact relative w-full max-w-lg mx-auto aspect-[3/4] overflow-hidden",
+    list: "kt-panel max-h-[70vh] overflow-y-auto",
+  };
+
+  function kopfzeileHtml(anzahl) {
+    return '<h3 class="kt-eyebrow mb-2">Übriger Kader <span class="normal-case tracking-normal">(' +
+      anzahl + "/11 aufgestellt)</span></h3>";
+  }
+
   KT.lineupEditor = {
+    LAYOUT: LAYOUT,
+    kopfzeileHtml: kopfzeileHtml,
+
     /**
+     * Baut den Bearbeitungsmodus auf. Haengt sich NICHT selbst ein: der
+     * Aufrufer setzt controller.el an die richtige Stelle (und beim Live-
+     * Nachladen wieder neu ein, statt den Editor zu verlieren).
+     *
      * @param opts.competitorId
-     * @param opts.competitorName
      * @param opts.matchday
-     * @param opts.onSaved  function(lineup) - nach erfolgreichem Speichern
-     * @param opts.spielerInfo  optional function(player) -> {badgesHtml,
-     *        statusHtml, points, punkteFarbe, played} | null - Spieltagsdaten
-     *        (S11/Bank, Tore, Vorlagen, Note, Punkte) zu einem Kaderspieler,
-     *        damit man auch beim nicht aufgestellten Rest sieht, was er
-     *        geholt haette.
+     * @param opts.squad       Kaderspieler [{espn_player_id, name, position, ...}]
+     * @param opts.formation   aktuelle Formation (oder null)
+     * @param opts.players     aktuelle Aufstellung [{slot, espn_player_id}]
+     * @param opts.chipHtml    function(player, slot) -> HTML der Spielfeld-Kachel
+     * @param opts.zeileHtml   function(player, ausgewaehlt) -> <li> des uebrigen Kaders
+     *                         (mit data-source="bench" data-player="..." draggable)
+     * @param opts.onSaved     function(lineup) - nach erfolgreichem Speichern
+     * @param opts.onCancel    function() - Bearbeitung ohne Speichern beendet
+     * @returns {el, refresh, destroy}
      */
-    open: function (opts) {
-      var escapeHtml = KT.ui.escapeHtml;
+    mount: function (opts) {
       var competitorId = opts.competitorId;
       var matchday = opts.matchday;
-      var spielerInfo = typeof opts.spielerInfo === "function" ? opts.spielerInfo : function () {
-        return null;
-      };
-
-      var squad = [];
-      var placements = new Map(); // slot -> espn_player_id
+      var squad = opts.squad || [];
+      var formation = opts.formation && KT.formations[opts.formation] ? opts.formation : KT.formationNames[0];
+      var placements = new Map(
+        (opts.players || []).map(function (p) {
+          return [p.slot, p.espn_player_id];
+        })
+      );
       var selectedBenchId = null;
       var alleAufstellungen = [];
       var vorlage = null;
-      var formation = KT.formationNames[0];
+      var speichert = false;
 
-      var overlay = document.createElement("div");
-      overlay.id = "lineup-editor-overlay";
-      overlay.className =
-        "fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-0 sm:p-4 overflow-y-auto";
-      overlay.innerHTML = [
-        '<div class="bg-panel border border-line w-full sm:max-w-5xl shadow-[0_6px_24px_rgba(0,0,0,0.6)] my-0 sm:my-8" data-panel>',
-        '  <div class="flex items-center justify-between gap-3 p-4 border-b-2 border-ink">',
-        "    <div>",
-        '      <h2 class="font-display text-2xl font-bold uppercase tracking-tight leading-none">Aufstellung</h2>',
-        '      <p class="text-sm text-mute mt-0.5">' + escapeHtml(opts.competitorName || "") + " · Spieltag " + matchday + "</p>",
-        "    </div>",
-        '    <button data-close class="text-mute hover:text-kicker text-2xl leading-none px-2">×</button>',
-        "  </div>",
-        '  <div class="p-4">',
-        '    <div class="flex flex-wrap gap-3 mb-4 items-end">',
-        "      <div>",
-        '        <label class="kt-eyebrow block mb-1">Formation</label>',
-        '        <select id="le-formation" class="kt-input font-semibold py-[0.42rem]">',
-        KT.formationNames
-          .map(function (f) {
-            return '          <option value="' + f + '">' + f + "</option>";
-          })
-          .join("\n"),
-        "        </select>",
-        "      </div>",
-        '      <button id="le-save" class="kt-btn kt-btn-primary">',
-        "        Aufstellung speichern",
-        "      </button>",
-        '      <button id="le-copy" class="kt-btn kt-btn-secondary hidden"></button>',
-        "    </div>",
-        '    <div class="grid gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">',
-        '      <div id="le-pitch" class="pitch relative w-full aspect-[3/4] max-h-[60vh] overflow-hidden"></div>',
-        "      <div>",
-        '        <h3 class="kt-eyebrow mb-2">Übriger Kader <span id="le-bench-count" class="normal-case tracking-normal"></span></h3>',
-        '        <ul id="le-bench-list" class="kt-panel max-h-[60vh] overflow-y-auto"></ul>',
-        "      </div>",
-        "    </div>",
+      var el = document.createElement("div");
+      el.setAttribute("data-lineup-editor", competitorId);
+      el.innerHTML = [
+        '<div class="' + LAYOUT.grid + '">',
+        '  <div data-le-pitch class="' + LAYOUT.pitch + '"></div>',
+        "  <div>",
+        '    <div data-le-kopf></div>',
+        '    <ul data-le-bench class="' + LAYOUT.list + '"></ul>',
         "  </div>",
         "</div>",
+        '<div class="flex flex-wrap justify-center items-end gap-2 mt-3">',
+        "  <div>",
+        '    <label class="kt-eyebrow block mb-1">Formation</label>',
+        '    <select data-le-formation class="kt-input font-semibold py-[0.42rem]">',
+        KT.formationNames
+          .map(function (f) {
+            return '      <option value="' + f + '">' + f + "</option>";
+          })
+          .join("\n"),
+        "    </select>",
+        "  </div>",
+        '  <button data-le-copy class="kt-btn kt-btn-secondary hidden"></button>',
+        '  <button data-le-cancel class="kt-btn kt-btn-secondary">Abbrechen</button>',
+        '  <button data-le-save class="kt-btn kt-btn-primary">Aufstellung speichern</button>',
+        "</div>",
+        '<p class="text-xs text-mute text-center mt-2">Spieler aus dem Kader aufs Feld ziehen – oder antippen und dann die Position antippen.</p>',
       ].join("\n");
-      document.body.appendChild(overlay);
 
-      var formationSelect = overlay.querySelector("#le-formation");
-      var pitchEl = overlay.querySelector("#le-pitch");
-      var benchEl = overlay.querySelector("#le-bench-list");
-      var benchCountEl = overlay.querySelector("#le-bench-count");
-      var saveBtn = overlay.querySelector("#le-save");
-      var copyBtn = overlay.querySelector("#le-copy");
-      formation = formationSelect.value;
-
-      function close() {
-        document.removeEventListener("dragover", autoScroll);
-        document.removeEventListener("keydown", onKeydown);
-        overlay.remove();
-      }
-
-      function onKeydown(e) {
-        if (e.key === "Escape") close();
-      }
-      document.addEventListener("keydown", onKeydown);
-
-      overlay.addEventListener("click", function (e) {
-        if (e.target.closest("[data-close]")) {
-          close();
-          return;
-        }
-        // Nur schliessen, wenn wirklich der dunkle Hintergrund getroffen wurde
-        // (e.target === overlay). e.target.closest("[data-panel]") war hier
-        // unzuverlaessig: der "x"-Knopf zum Entfernen eines Spielers rendert
-        // beim Klick sofort neu und haengt sich dabei selbst aus dem Baum
-        // aus - closest() findet dann auf dem verwaisten Knoten nichts mehr
-        // und der Editor schloss sich faelschlich mit.
-        if (e.target === overlay) close();
-      });
+      var formationSelect = el.querySelector("[data-le-formation]");
+      var pitchEl = el.querySelector("[data-le-pitch]");
+      var benchEl = el.querySelector("[data-le-bench]");
+      var kopfEl = el.querySelector("[data-le-kopf]");
+      var saveBtn = el.querySelector("[data-le-save]");
+      var copyBtn = el.querySelector("[data-le-copy]");
+      var cancelBtn = el.querySelector("[data-le-cancel]");
+      formationSelect.value = formation;
 
       function playerById(id) {
         return squad.find(function (p) {
@@ -139,52 +127,32 @@ window.KT = window.KT || {};
           if (!player) {
             return (
               '<div class="empty-slot pitch-slot-empty bg-white/5 border border-dashed border-white/25 ' +
-              'flex items-center justify-center text-[10px] text-white/50 font-semibold uppercase">' +
+              'flex items-center justify-center text-[9px] text-white/50 font-semibold uppercase">' +
               s.label +
               "</div>"
             );
           }
-          // Wie bei kicker: Foto im Hochformat, darunter nur der Nachname -
-          // plus, wenn Spieltagsdaten da sind, dieselben Symbole, Punkte und
-          // Unterschrift wie im Punkte-Spielfeld.
-          var info = spielerInfo(player);
-          return [
-            '<div draggable="true" data-source="slot" data-chip-slot="' + s.slot + '" data-player="' + player.espn_player_id + '"',
-            '  class="relative flex flex-col items-center w-full cursor-grab">',
-            '  <div class="relative">',
-            "    " + KT.images.avatarHtml(player.espn_player_id, player.name, "pitch-photo", false),
-            info && info.badgesHtml
-              ? '    <div class="absolute -top-1 -left-1 leading-none text-[9px] bg-[#0c0c0c]/90 rounded-sm px-0.5 py-px whitespace-nowrap">' +
-                info.badgesHtml + "</div>"
-              : "",
-            info
-              ? '    <span class="absolute bottom-0.5 right-0.5 text-[9px] font-bold tabular-nums leading-none ' +
-                'bg-[#0c0c0c]/90 rounded-sm px-1 py-0.5 ' + info.punkteFarbe + '">' + info.points + "</span>"
-              : "",
-            '    <button data-remove-slot="' + s.slot + '" title="Von dieser Position nehmen"',
-            '      class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-panel text-kicker text-[10px]',
-            '             leading-none ring-1 ring-line hover:bg-kicker hover:text-white">×</button>',
-            "  </div>",
-            '  <div class="pitch-name mt-1 font-semibold text-ink text-center max-w-full truncate">' +
-              escapeHtml(KT.ui.lastName(player.name)) + "</div>",
-            info ? '  <div class="pitch-status max-w-full truncate">' + info.statusHtml + "</div>" : "",
-            "</div>",
-          ].join("\n");
+          return (
+            '<div draggable="true" data-source="slot" data-chip-slot="' + s.slot + '" data-player="' +
+            player.espn_player_id + '" class="w-full cursor-grab">' +
+            opts.chipHtml(player, s.slot) +
+            "</div>"
+          );
         });
       }
 
       function renderBench() {
         var placed = placedIds();
-        var bench = squad.filter(function (p) {
-          return !placed.has(p.espn_player_id);
-        });
-        benchCountEl.textContent = "(" + placed.size + "/11 aufgestellt)";
+        kopfEl.innerHTML = kopfzeileHtml(placed.size);
 
         if (squad.length === 0) {
           benchEl.innerHTML =
             '<li class="text-mute text-sm px-3 py-3">Dieser Konkurrent hat noch keinen Kader. Erst unter „Kader“ anlegen.</li>';
           return;
         }
+        var bench = squad.filter(function (p) {
+          return !placed.has(p.espn_player_id);
+        });
         if (bench.length === 0) {
           benchEl.innerHTML = '<li class="text-mute text-sm px-3 py-3">Alle Kaderspieler sind aufgestellt.</li>';
           return;
@@ -192,29 +160,7 @@ window.KT = window.KT || {};
         benchEl.innerHTML = bench
           .sort(KT.ui.comparePlayers)
           .map(function (p) {
-            var selected = selectedBenchId === p.espn_player_id;
-            var info = spielerInfo(p);
-            var verein = escapeHtml(KT.vereine.name(p.espn_team_id, p.team_name));
-            return [
-              '<li draggable="true" data-source="bench" data-player="' + p.espn_player_id + '"',
-              '  class="player-chip kt-row flex items-center gap-2 px-3 py-2 text-sm cursor-grab ' +
-                (selected ? "bg-kicker-soft ring-1 ring-inset ring-kicker" : "bg-panel kt-hover") + '">',
-              "  " + KT.images.avatarHtml(p.espn_player_id, p.name, "w-8 h-8"),
-              '  <span class="w-6 text-center text-[10px] font-semibold uppercase text-mute">' + escapeHtml(p.position) + "</span>",
-              '  <span class="flex-1 min-w-0">',
-              '    <span class="block font-medium text-ink truncate">' + escapeHtml(p.name) + "</span>",
-              '    <span class="block text-xs text-mute truncate">' + verein +
-                (info ? " · " + info.statusHtml : "") + "</span>",
-              "  </span>",
-              info && info.badgesHtml
-                ? '  <span class="shrink-0 text-[11px] leading-none whitespace-nowrap">' + info.badgesHtml + "</span>"
-                : "",
-              info
-                ? '  <span class="shrink-0 w-8 text-right font-bold tabular-nums ' + info.punkteFarbe + '"' +
-                  ' title="Punkte an diesem Spieltag">' + info.points + "</span>"
-                : "",
-              "</li>",
-            ].join("\n");
+            return opts.zeileHtml(p, selectedBenchId === p.espn_player_id);
           })
           .join("");
       }
@@ -234,8 +180,11 @@ window.KT = window.KT || {};
         });
       }
 
-      function renderCopyButton(aktuellerSpieltag, hatEigeneAufstellung) {
-        vorlage = hatEigeneAufstellung ? null : findeVorlage(aktuellerSpieltag);
+      function renderCopyButton() {
+        var hatEigene = alleAufstellungen.some(function (l) {
+          return l.matchday === matchday;
+        });
+        vorlage = hatEigene ? null : findeVorlage(matchday);
         if (!vorlage) {
           copyBtn.classList.add("hidden");
           return;
@@ -279,8 +228,9 @@ window.KT = window.KT || {};
       });
 
       pitchEl.addEventListener("click", function (e) {
-        if (e.target.dataset.removeSlot) {
-          removeFromSlot(e.target.dataset.removeSlot);
+        var removeBtn = e.target.closest("[data-remove-slot]");
+        if (removeBtn) {
+          removeFromSlot(removeBtn.dataset.removeSlot);
           return;
         }
         var slotEl = e.target.closest("[data-slot]");
@@ -293,12 +243,12 @@ window.KT = window.KT || {};
 
       function autoScroll(e) {
         var rand = 40;
-        if (e.clientY < rand) overlay.scrollBy(0, -14);
-        else if (e.clientY > window.innerHeight - rand) overlay.scrollBy(0, 14);
+        if (e.clientY < rand) window.scrollBy(0, -14);
+        else if (e.clientY > window.innerHeight - rand) window.scrollBy(0, 14);
       }
       document.addEventListener("dragover", autoScroll);
 
-      overlay.addEventListener("dragstart", function (e) {
+      el.addEventListener("dragstart", function (e) {
         var chip = e.target.closest("[data-player]");
         if (!chip) return;
         e.dataTransfer.effectAllowed = "move";
@@ -319,16 +269,19 @@ window.KT = window.KT || {};
         }
       });
 
+      function dropDaten(e) {
+        try {
+          return JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+        } catch (err) {
+          return {};
+        }
+      }
+
       pitchEl.addEventListener("drop", function (e) {
         var slotEl = e.target.closest("[data-slot]");
         if (!slotEl) return;
         e.preventDefault();
-        var data;
-        try {
-          data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
-        } catch (err) {
-          return;
-        }
+        var data = dropDaten(e);
         if (!data.playerId) return;
         placePlayer(slotEl.dataset.slot, data.playerId);
         selectedBenchId = null;
@@ -341,12 +294,7 @@ window.KT = window.KT || {};
 
       benchEl.addEventListener("drop", function (e) {
         e.preventDefault();
-        var data;
-        try {
-          data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
-        } catch (err) {
-          return;
-        }
+        var data = dropDaten(e);
         if (data.source === "slot" && data.slot) removeFromSlot(data.slot);
       });
 
@@ -375,20 +323,23 @@ window.KT = window.KT || {};
       formationSelect.addEventListener("change", function () {
         var alteFormation = formation;
         formation = formationSelect.value;
-        var zurueckAufDieBank = inFormationUebernehmen(alteFormation, formation);
+        var zurueck = inFormationUebernehmen(alteFormation, formation);
         selectedBenchId = null;
         renderAll();
-        if (zurueckAufDieBank) {
+        if (zurueck) {
           KT.ui.showInfo(
-            zurueckAufDieBank === 1
-              ? "1 Spieler zurück auf die Bank – in " + formation + " ist dort weniger Platz."
-              : zurueckAufDieBank + " Spieler zurück auf die Bank – in " + formation +
-                " ist dort weniger Platz."
+            (zurueck === 1 ? "1 Spieler" : zurueck + " Spieler") +
+              " zurück in den Kader – in " + formation + " ist dort weniger Platz."
           );
         }
       });
 
+      cancelBtn.addEventListener("click", function () {
+        if (typeof opts.onCancel === "function") opts.onCancel();
+      });
+
       saveBtn.addEventListener("click", function () {
+        if (speichert) return;
         var players = Array.from(placements.entries()).map(function (entry) {
           return { slot: entry[0], espn_player_id: entry[1] };
         });
@@ -396,15 +347,11 @@ window.KT = window.KT || {};
           KT.ui.showError("Bitte mindestens einen Spieler aufstellen.");
           return;
         }
+        speichert = true;
+        saveBtn.disabled = true;
         KT.api
           .saveLineup(competitorId, matchday, formation, players)
           .then(function (gespeichert) {
-            alleAufstellungen = alleAufstellungen.filter(function (l) {
-              return l.matchday !== matchday;
-            });
-            alleAufstellungen.push(gespeichert);
-            renderCopyButton(matchday, true);
-
             if (players.length < 11) {
               KT.ui.showInfo(
                 "Aufstellung für Spieltag " + matchday + " gespeichert (" + players.length +
@@ -417,40 +364,33 @@ window.KT = window.KT || {};
           })
           .catch(function (err) {
             KT.ui.showError("Konnte Aufstellung nicht speichern: " + KT.ui.backendErrorText(err));
+          })
+          .then(function () {
+            speichert = false;
+            saveBtn.disabled = false;
           });
       });
 
-      return KT.images
-        .load()
-        .then(function () {
-          return Promise.all([KT.api.getSquad(competitorId), KT.api.listLineups(competitorId)]);
-        })
-        .then(function (results) {
-          squad = results[0];
-          alleAufstellungen = results[1] || [];
+      renderAll();
 
-          var existing = alleAufstellungen.filter(function (l) {
-            return l.matchday === matchday;
-          })[0];
-
-          if (existing) {
-            formation = existing.formation;
-            formationSelect.value = formation;
-            placements = new Map(
-              existing.players.map(function (p) {
-                return [p.slot, p.espn_player_id];
-              })
-            );
-          } else {
-            formation = formationSelect.value;
-            placements = new Map();
-          }
-          renderCopyButton(matchday, Boolean(existing));
-          renderAll();
+      // Nur fuer "Von Spieltag X uebernehmen" - die Ansicht steht schon.
+      KT.api
+        .listLineups(competitorId)
+        .then(function (liste) {
+          alleAufstellungen = liste || [];
+          renderCopyButton();
         })
-        .catch(function (err) {
-          KT.ui.showError("Konnte Kader/Aufstellung nicht laden: " + KT.ui.backendErrorText(err));
-        });
+        .catch(function () {});
+
+      return {
+        el: el,
+        /** Kacheln/Zeilen neu zeichnen, z. B. nach einem Live-Update. */
+        refresh: renderAll,
+        destroy: function () {
+          document.removeEventListener("dragover", autoScroll);
+          el.remove();
+        },
+      };
     },
   };
 })(window.KT);
