@@ -275,20 +275,21 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * @param entfernenSlot  nur im Bearbeitungsmodus: Position, von der das
-     *        "x" den Spieler nimmt. Sonst ist die Kachel der Weg zur
-     *        Punkte-Aufschluesselung.
+     * @param bearbeiten  nur im Bearbeitungsmodus: true (Kachel ist ziehbar)
+     *        oder die Position, von der das "x" den Spieler nimmt. Sonst ist
+     *        die Kachel der Weg zur Punkte-Aufschluesselung.
      */
-    function renderPlayerChip(entry, competitorId, entfernenSlot) {
+    function renderPlayerChip(entry, competitorId, bearbeiten) {
       var badges = ereignisBadges(entry);
       var punkteFarbe = punkteFarbeFuer(entry);
       var statusLine = statusZeile(entry);
+      var entfernenSlot = typeof bearbeiten === "string" ? bearbeiten : null;
 
       // Aufbau wie bei kicker: Foto im Hochformat, Ereignis-Symbole an der
       // oberen linken Ecke, die Zahl oben rechts, darunter nur der Nachname.
       // Auf dem dunklen Rasen braucht der Name keine eigene Flaeche mehr.
       return [
-        entfernenSlot
+        bearbeiten
           ? '<div class="flex flex-col items-center w-full" title="' + escapeHtml(entry.playerName) +
             ' – ziehen zum Verschieben">'
           : '<div class="flex flex-col items-center w-full cursor-pointer" ' +
@@ -508,38 +509,27 @@ window.KT.views = window.KT.views || {};
     }
 
     /**
-     * Eine Zeile im uebrigen Kader: dieselben Angaben wie auf dem Spielfeld
-     * (S11/Bank, Tore, Vorlagen, Note, Punkte) - so sieht man, ob auf der
-     * Bank noch Punkte gelegen haetten.
+     * Eine Kachel im uebrigen Kader - dieselbe wie auf dem Spielfeld (Foto
+     * mit Punkten, S11/Bank, Toren, Vorlagen, darunter Name und Stand). So
+     * sieht man, ob auf der Bank noch Punkte gelegen haetten.
      *
-     * @param bearbeiten  true im Bearbeitungsmodus: Zeile ist ziehbar und
+     * @param bearbeiten  true im Bearbeitungsmodus: Kachel ist ziehbar und
      *        auswaehlbar statt der Weg zur Punkte-Aufschluesselung.
      */
-    function renderKaderZeile(entry, competitorId, bearbeiten, ausgewaehlt) {
-      var badges = ereignisBadges(entry);
-      var verein = escapeHtml(KT.vereine.name(entry.teamId, entry.teamName));
+    function renderKaderKachel(entry, competitorId, bearbeiten, ausgewaehlt) {
       var attrs = bearbeiten
         ? 'draggable="true" data-source="bench" data-player="' + escapeHtml(entry.playerId) + '"'
         : 'data-kader-player="' + competitorId + ":" + escapeHtml(entry.playerId) + '"';
-      var klasse = "kt-row flex items-center gap-2 px-3 py-2 text-sm " +
-        (bearbeiten ? "cursor-grab " : "cursor-pointer ") +
-        (ausgewaehlt ? "bg-kicker-soft ring-1 ring-inset ring-kicker" : "bg-panel kt-hover");
-      return [
-        "<li " + attrs + ' class="' + klasse + '">',
-        "  " + KT.images.avatarHtml(entry.playerId, entry.playerName, "w-8 h-8"),
-        '  <span class="w-6 text-center text-[10px] font-semibold uppercase text-mute">' +
-          escapeHtml(entry.position || "") + "</span>",
-        '  <span class="flex-1 min-w-0">',
-        '    <span class="block font-medium text-ink truncate">' + escapeHtml(entry.playerName) + "</span>",
-        '    <span class="block text-xs text-mute truncate">' + verein + " · " + statusZeile(entry) + "</span>",
-        "  </span>",
-        badges.length
-          ? '  <span class="shrink-0 text-[11px] leading-none whitespace-nowrap">' + badges.join("") + "</span>"
-          : "",
-        '  <span class="shrink-0 w-8 text-right font-bold tabular-nums ' + punkteFarbeFuer(entry) + '"' +
-          ' title="Punkte an diesem Spieltag">' + entry.points + "</span>",
-        "</li>",
-      ].join("");
+      var klasse = "min-w-0 rounded-sm p-1 " +
+        (bearbeiten ? "cursor-grab " : "") +
+        (ausgewaehlt ? "bg-white/15 ring-2 ring-kicker" : "hover:bg-white/5");
+      return "<div " + attrs + ' class="' + klasse + '">' +
+        renderPlayerChip(entry, competitorId, Boolean(bearbeiten)) + "</div>";
+    }
+
+    /** Hinweis in der Bank-Flaeche, wenn es keine Kacheln gibt. */
+    function bankHinweis(text) {
+      return '<p class="col-span-full text-white/60 text-sm text-center py-3">' + text + "</p>";
     }
 
     /** Lesefassung des uebrigen Kaders (alle, die nicht aufgestellt sind). */
@@ -549,12 +539,11 @@ window.KT.views = window.KT.views || {};
         return !aufgestellt.has(p.espn_player_id);
       });
       if (!rest.length) {
-        return '<li class="text-mute text-sm px-3 py-3">' +
-          (aufgestellt.size ? "Alle Kaderspieler sind aufgestellt." : "Kein Kader angelegt.") + "</li>";
+        return bankHinweis(aufgestellt.size ? "Alle Kaderspieler sind aufgestellt." : "Kein Kader angelegt.");
       }
       return rest
         .sort(KT.ui.comparePlayers)
-        .map(function (p) { return renderKaderZeile(kaderEintrag(p), c.competitorId, false, false); })
+        .map(function (p) { return renderKaderKachel(kaderEintrag(p), c.competitorId, false, false); })
         .join("");
     }
 
@@ -591,7 +580,7 @@ window.KT.views = window.KT.views || {};
           return renderPlayerChip(entry, c.competitorId, slot);
         },
         zeileHtml: function (player, ausgewaehlt) {
-          return renderKaderZeile(kaderEintrag(player), c.competitorId, true, ausgewaehlt);
+          return renderKaderKachel(kaderEintrag(player), c.competitorId, true, ausgewaehlt);
         },
         onCancel: function () {
           bearbeitungBeenden();
@@ -699,7 +688,7 @@ window.KT.views = window.KT.views || {};
             : '    <p class="text-mute text-sm text-center py-6">Noch keine Aufstellung für diesen Spieltag.</p>',
           "    <div>",
           "      " + KT.lineupEditor.kopfzeileHtml(c.slots.length),
-          '      <ul class="' + L.list + '">' + restkaderHtml(c) + "</ul>",
+          '      <div class="' + L.list + '">' + restkaderHtml(c) + "</div>",
           "    </div>",
           "  </div>",
           // Ohne Anmeldung gar nicht erst anbieten: Der Editor wuerde sich

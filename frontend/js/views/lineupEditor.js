@@ -16,7 +16,10 @@ window.KT = window.KT || {};
   var LAYOUT = {
     grid: "grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start",
     pitch: "pitch pitch-compact relative w-full max-w-lg mx-auto aspect-[3/4] overflow-hidden",
-    list: "kt-panel max-h-[70vh] overflow-y-auto",
+    // Dunkle "Bank" mit denselben Kacheln wie auf dem Feld (styles.css).
+    list: "kader-bank grid grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-x-1 gap-y-2 p-2 " +
+      "items-start max-h-[70vh] overflow-y-auto",
+    hinweis: "col-span-full text-white/60 text-sm text-center py-3",
   };
 
   function kopfzeileHtml(anzahl) {
@@ -39,7 +42,7 @@ window.KT = window.KT || {};
      * @param opts.formation   aktuelle Formation (oder null)
      * @param opts.players     aktuelle Aufstellung [{slot, espn_player_id}]
      * @param opts.chipHtml    function(player, slot) -> HTML der Spielfeld-Kachel
-     * @param opts.zeileHtml   function(player, ausgewaehlt) -> <li> des uebrigen Kaders
+     * @param opts.zeileHtml   function(player, ausgewaehlt) -> Kachel des uebrigen Kaders
      *                         (mit data-source="bench" data-player="..." draggable)
      * @param opts.onSaved     function(lineup) - nach erfolgreichem Speichern
      * @param opts.onCancel    function() - Bearbeitung ohne Speichern beendet
@@ -67,7 +70,7 @@ window.KT = window.KT || {};
         '  <div data-le-pitch class="' + LAYOUT.pitch + '"></div>',
         "  <div>",
         '    <div data-le-kopf></div>',
-        '    <ul data-le-bench class="' + LAYOUT.list + '"></ul>',
+        '    <div data-le-bench class="' + LAYOUT.list + '"></div>',
         "  </div>",
         "</div>",
         '<div class="flex flex-wrap justify-center items-end gap-2 mt-3">',
@@ -147,14 +150,14 @@ window.KT = window.KT || {};
 
         if (squad.length === 0) {
           benchEl.innerHTML =
-            '<li class="text-mute text-sm px-3 py-3">Dieser Konkurrent hat noch keinen Kader. Erst unter „Kader“ anlegen.</li>';
+            '<p class="' + LAYOUT.hinweis + '">Dieser Konkurrent hat noch keinen Kader. Erst unter „Kader“ anlegen.</p>';
           return;
         }
         var bench = squad.filter(function (p) {
           return !placed.has(p.espn_player_id);
         });
         if (bench.length === 0) {
-          benchEl.innerHTML = '<li class="text-mute text-sm px-3 py-3">Alle Kaderspieler sind aufgestellt.</li>';
+          benchEl.innerHTML = '<p class="' + LAYOUT.hinweis + '">Alle Kaderspieler sind aufgestellt.</p>';
           return;
         }
         benchEl.innerHTML = bench

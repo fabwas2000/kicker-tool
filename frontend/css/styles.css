@@ -304,6 +304,33 @@ body {
 }
 
 /*
+  Uebriger Kader ("Bank") neben dem Spielfeld: dieselben Kacheln wie auf dem
+  Feld, auf demselben dunklen Grund. Die Groessen sind hier fest statt cqw -
+  die Spalte ist schmaler als das Feld, mit cqw wuerden die Fotos kleiner als
+  die auf dem Platz.
+*/
+.kader-bank {
+  background: #1a251d;
+  border: 1px solid var(--line);
+}
+
+.kader-bank .pitch-photo {
+  width: 52px;
+}
+
+.kader-bank .pitch-points {
+  font-size: 13px;
+}
+
+.kader-bank .pitch-name {
+  font-size: 11px;
+}
+
+.kader-bank .pitch-status {
+  font-size: 10px;
+}
+
+/*
   Fruehere Notverkleinerung auf schmalen Bildschirmen ist entfallen: seit die
   Reihenabstaende in formations.js gleichmaessiger liegen (mindestens 17%
   statt 13%), passen die Kacheln auch am Handy ohne Herunterskalieren - und
